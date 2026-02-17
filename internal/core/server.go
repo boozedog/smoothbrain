@@ -1,0 +1,134 @@
+package core
+
+import (
+	"embed"
+	"encoding/json"
+	"fmt"
+	"html"
+	"io/fs"
+	"log/slog"
+	"net/http"
+	"strings"
+
+	"github.com/dmarx/smoothbrain/internal/store"
+)
+
+//go:embed all:web
+var webFS embed.FS
+
+type Server struct {
+	mux   *http.ServeMux
+	store *store.Store
+	log   *slog.Logger
+}
+
+func NewServer(s *store.Store, log *slog.Logger) *Server {
+	srv := &Server{
+		mux:   http.NewServeMux(),
+		store: s,
+		log:   log,
+	}
+	srv.mux.HandleFunc("GET /api/health", srv.handleHealth)
+	srv.mux.HandleFunc("GET /api/events", srv.handleEvents)
+	srv.mux.HandleFunc("GET /api/events/html", srv.handleEventsHTML)
+
+	// Serve embedded static files at root.
+	webRoot, err := fs.Sub(webFS, "web")
+	if err != nil {
+		panic("embedded web assets missing: " + err.Error())
+	}
+	srv.mux.Handle("GET /", http.FileServer(http.FS(webRoot)))
+
+	return srv
+}
+
+// Handler returns the http.Handler for use with http.Server.
+func (s *Server) Handler() http.Handler {
+	return s.mux
+}
+
+// RegisterWebhook registers a POST handler at /hooks/{name}.
+func (s *Server) RegisterWebhook(name string, handler http.HandlerFunc) {
+	s.mux.HandleFunc("POST /hooks/"+name, handler)
+	s.log.Info("webhook registered", "path", "/hooks/"+name)
+}
+
+func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+}
+
+func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
+	events := s.queryEvents()
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(events)
+}
+
+func (s *Server) handleEventsHTML(w http.ResponseWriter, r *http.Request) {
+	events := s.queryEvents()
+	w.Header().Set("Content-Type", "text/html")
+
+	if len(events) == 0 {
+		fmt.Fprint(w, `<div class="empty">No events yet.</div>`)
+		return
+	}
+
+	var b strings.Builder
+	b.WriteString(`<table><thead><tr><th>Time</th><th>Source</th><th>Type</th><th>Route</th><th>ID</th></tr></thead><tbody>`)
+	for _, e := range events {
+		b.WriteString("<tr>")
+		b.WriteString(fmt.Sprintf(`<td class="mono">%s</td>`, html.EscapeString(str(e["timestamp"]))))
+		b.WriteString(fmt.Sprintf(`<td><span class="badge badge-source">%s</span></td>`, html.EscapeString(str(e["source"]))))
+		b.WriteString(fmt.Sprintf(`<td><span class="badge badge-type">%s</span></td>`, html.EscapeString(str(e["type"]))))
+		b.WriteString(fmt.Sprintf(`<td>%s</td>`, html.EscapeString(str(e["route"]))))
+		id := str(e["id"])
+		if len(id) > 8 {
+			id = id[:8]
+		}
+		b.WriteString(fmt.Sprintf(`<td class="mono">%s</td>`, html.EscapeString(id)))
+		b.WriteString("</tr>")
+	}
+	b.WriteString(`</tbody></table>`)
+	fmt.Fprint(w, b.String())
+}
+
+func (s *Server) queryEvents() []map[string]any {
+	rows, err := s.store.DB().Query(
+		`SELECT id, source, type, payload, timestamp, COALESCE(route, '') FROM events ORDER BY created_at DESC LIMIT 50`,
+	)
+	if err != nil {
+		s.log.Error("query events failed", "error", err)
+		return []map[string]any{}
+	}
+	defer rows.Close()
+
+	var events []map[string]any
+	for rows.Next() {
+		var id, source, typ, payload, ts, route string
+		if err := rows.Scan(&id, &source, &typ, &payload, &ts, &route); err != nil {
+			continue
+		}
+		events = append(events, map[string]any{
+			"id":        id,
+			"source":    source,
+			"type":      typ,
+			"payload":   json.RawMessage(payload),
+			"timestamp": ts,
+			"route":     route,
+		})
+	}
+	if err := rows.Err(); err != nil {
+		s.log.Error("rows iteration error", "error", err)
+	}
+	if events == nil {
+		events = []map[string]any{}
+	}
+	return events
+}
+
+func str(v any) string {
+	if s, ok := v.(string); ok {
+		return s
+	}
+	return fmt.Sprintf("%v", v)
+}

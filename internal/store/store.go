@@ -1,0 +1,67 @@
+package store
+
+import (
+	"database/sql"
+	"fmt"
+
+	_ "modernc.org/sqlite"
+)
+
+var schema = `
+CREATE TABLE IF NOT EXISTS events (
+    id TEXT PRIMARY KEY,
+    source TEXT NOT NULL,
+    type TEXT NOT NULL,
+    payload TEXT NOT NULL,
+    timestamp DATETIME NOT NULL,
+    route TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS plugin_state (
+    plugin TEXT NOT NULL,
+    key TEXT NOT NULL,
+    value TEXT NOT NULL,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (plugin, key)
+);
+
+CREATE TABLE IF NOT EXISTS supervisor_log (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    task TEXT NOT NULL,
+    result TEXT,
+    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+`
+
+type Store struct {
+	db *sql.DB
+}
+
+func Open(path string) (*Store, error) {
+	db, err := sql.Open("sqlite", path)
+	if err != nil {
+		return nil, fmt.Errorf("opening database %s: %w", path, err)
+	}
+
+	// Enable WAL mode for better concurrent reads.
+	if _, err := db.Exec("PRAGMA journal_mode=WAL"); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("setting WAL mode: %w", err)
+	}
+
+	if _, err := db.Exec(schema); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("running migrations: %w", err)
+	}
+
+	return &Store{db: db}, nil
+}
+
+func (s *Store) DB() *sql.DB {
+	return s.db
+}
+
+func (s *Store) Close() error {
+	return s.db.Close()
+}

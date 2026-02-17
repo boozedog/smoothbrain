@@ -1,2 +1,5 @@
 .sidecar/
 .todos/
+smoothbrain
+*.db
+result

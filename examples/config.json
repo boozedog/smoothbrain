@@ -1,0 +1,42 @@
+{
+  "http": {
+    "address": "127.0.0.1:8080"
+  },
+  "database": "smoothbrain.db",
+  "plugins": {
+    "uptime-kuma": {},
+    "xai": {
+      "model": "grok-3",
+      "api_key_file": "/run/secrets/xai-api-key"
+    },
+    "mattermost": {
+      "url": "https://mattermost.example.com",
+      "token_file": "/run/secrets/mattermost-token"
+    }
+  },
+  "routes": [
+    {
+      "name": "uptime-kuma-alerts",
+      "source": "uptime-kuma",
+      "event": "alert",
+      "pipeline": [
+        {
+          "plugin": "xai",
+          "action": "summarize",
+          "params": {
+            "prompt": "Summarize this Uptime Kuma alert for a chat notification. Be concise."
+          }
+        }
+      ],
+      "sink": {
+        "plugin": "mattermost",
+        "params": {
+          "channel": "CHANNEL_ID_HERE"
+        }
+      }
+    }
+  ],
+  "supervisor": {
+    "tasks": []
+  }
+}

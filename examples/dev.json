@@ -1,0 +1,11 @@
+{
+  "http": {"address": "127.0.0.1:8080"},
+  "database": "smoothbrain.db",
+  "plugins": {
+    "uptime-kuma": {},
+    "xai": {"model": "grok-3"},
+    "mattermost": {"url": "http://localhost"}
+  },
+  "routes": [],
+  "supervisor": {"tasks": []}
+}
