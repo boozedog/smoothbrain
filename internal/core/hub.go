@@ -44,6 +44,14 @@ func (h *Hub) HandleEvent(e plugin.Event) {
 	}
 }
 
+// Notify triggers a broadcast to all connected WebSocket clients.
+func (h *Hub) Notify() {
+	select {
+	case h.notify <- struct{}{}:
+	default:
+	}
+}
+
 // Run processes notifications and broadcasts to all clients.
 func (h *Hub) Run(ctx context.Context) {
 	for {
@@ -61,7 +69,7 @@ func (h *Hub) broadcast() {
 
 	var buf bytes.Buffer
 	buf.WriteString(`<div id="events-table">`)
-	renderEventsHTML(&buf, events)
+	renderEventsHTML(&buf, events, h.store, h.log)
 	buf.WriteString(`</div>`)
 	msg := buf.Bytes()
 
@@ -101,7 +109,7 @@ func (h *Hub) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	events := queryEvents(h.store, h.log)
 	var buf bytes.Buffer
 	fmt.Fprint(&buf, `<div id="events-table">`)
-	renderEventsHTML(&buf, events)
+	renderEventsHTML(&buf, events, h.store, h.log)
 	fmt.Fprint(&buf, `</div>`)
 	conn.Write(ctx, websocket.MessageText, buf.Bytes())
 

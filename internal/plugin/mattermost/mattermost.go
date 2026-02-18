@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"mime/multipart"
 	"net/http"
 	"net/url"
 	"os"
@@ -36,6 +37,9 @@ type Plugin struct {
 	botID    string
 	botName  string
 	wsCancel context.CancelFunc
+
+	// Command dispatch.
+	commands []plugin.CommandInfo
 }
 
 func New(log *slog.Logger) *Plugin {
@@ -219,6 +223,11 @@ type wsPost struct {
 	RootID    string `json:"root_id"`
 }
 
+// SetCommands provides the plugin with the list of routable commands.
+func (p *Plugin) SetCommands(commands []plugin.CommandInfo) {
+	p.commands = commands
+}
+
 func (p *Plugin) handleWSMessage(data []byte) {
 	var ev wsEvent
 	if err := json.Unmarshal(data, &ev); err != nil {
@@ -239,7 +248,7 @@ func (p *Plugin) handleWSMessage(data []byte) {
 		return
 	}
 
-	// Only emit for DMs or @mentions.
+	// Only respond to DMs or @mentions.
 	isDM := ev.Data.ChannelType == "D"
 	isMention := strings.Contains(post.Message, "@"+p.botName)
 	if !isDM && !isMention {
@@ -253,22 +262,105 @@ func (p *Plugin) handleWSMessage(data []byte) {
 		"is_mention", isMention,
 	)
 
+	// Strip @botname mention prefix.
+	msg := post.Message
+	msg = strings.ReplaceAll(msg, "@"+p.botName, "")
+	msg = strings.TrimSpace(msg)
+
+	// Parse subcommand (first word).
+	subcmd, rest, _ := strings.Cut(msg, " ")
+	subcmd = strings.ToLower(subcmd)
+	rest = strings.TrimSpace(rest)
+
+	// Handle "help" or unknown commands.
+	if subcmd == "help" || !p.isKnownCommand(subcmd) {
+		helpText := p.buildHelpText()
+		if subcmd != "help" && subcmd != "" {
+			helpText = fmt.Sprintf("Unknown command `%s`.\n\n%s", subcmd, helpText)
+		}
+		if err := p.sendEphemeral(post.ChannelID, post.UserID, helpText); err != nil {
+			p.log.Error("mattermost: send ephemeral", "error", err)
+		}
+		return
+	}
+
 	p.bus.Emit(plugin.Event{
 		ID:        uuid.NewString(),
 		Source:    "mattermost",
-		Type:      "message",
+		Type:      subcmd,
 		Timestamp: time.Now(),
 		Payload: map[string]any{
 			"channel":      post.ChannelID,
 			"channel_id":   post.ChannelID,
 			"post_id":      post.ID,
 			"root_id":      post.RootID,
-			"message":      post.Message,
+			"message":      rest,
 			"user_id":      post.UserID,
 			"sender_name":  ev.Data.SenderName,
 			"channel_type": ev.Data.ChannelType,
 		},
 	})
+}
+
+func (p *Plugin) isKnownCommand(name string) bool {
+	for _, c := range p.commands {
+		if c.Name == name {
+			return true
+		}
+	}
+	return false
+}
+
+func (p *Plugin) buildHelpText() string {
+	var b strings.Builder
+	b.WriteString("**Available commands:**\n")
+	for _, c := range p.commands {
+		if c.Description != "" {
+			fmt.Fprintf(&b, "- `%s` — %s\n", c.Name, c.Description)
+		} else {
+			fmt.Fprintf(&b, "- `%s`\n", c.Name)
+		}
+	}
+	b.WriteString("- `help` — Show this message\n")
+	return b.String()
+}
+
+// sendEphemeral posts an ephemeral message visible only to the given user.
+func (p *Plugin) sendEphemeral(channelID, userID, text string) error {
+	body, err := json.Marshal(map[string]any{
+		"user_id": userID,
+		"post": map[string]string{
+			"channel_id": channelID,
+			"message":    text,
+		},
+	})
+	if err != nil {
+		return err
+	}
+
+	u, err := url.JoinPath(p.cfg.URL, "/api/v4/posts/ephemeral")
+	if err != nil {
+		return err
+	}
+
+	req, err := http.NewRequest("POST", u, bytes.NewReader(body))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+p.token)
+
+	resp, err := p.client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		respBody, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("ephemeral api error %d: %s", resp.StatusCode, string(respBody))
+	}
+	return nil
 }
 
 // --- Sink ---
@@ -281,7 +373,7 @@ func (p *Plugin) HandleEvent(ctx context.Context, event plugin.Event) error {
 
 	message := formatMessage(event)
 
-	post := map[string]string{
+	post := map[string]any{
 		"channel_id": channel,
 		"message":    message,
 	}
@@ -290,9 +382,22 @@ func (p *Plugin) HandleEvent(ctx context.Context, event plugin.Event) error {
 	if postID, _ := event.Payload["post_id"].(string); postID != "" {
 		rootID, _ := event.Payload["root_id"].(string)
 		if rootID == "" {
-			rootID = postID // start a new thread under the triggering message
+			rootID = postID
 		}
 		post["root_id"] = rootID
+	}
+
+	// Upload file attachment if present.
+	if content, ok := event.Payload["file_content"].(string); ok && content != "" {
+		filename, _ := event.Payload["file_name"].(string)
+		if filename == "" {
+			filename = "file.txt"
+		}
+		fileID, err := p.uploadFile(ctx, channel, filename, []byte(content))
+		if err != nil {
+			return fmt.Errorf("mattermost: upload file: %w", err)
+		}
+		post["file_ids"] = []string{fileID}
 	}
 
 	body, err := json.Marshal(post)
@@ -325,6 +430,55 @@ func (p *Plugin) HandleEvent(ctx context.Context, event plugin.Event) error {
 
 	p.log.Info("mattermost message sent", "channel", channel, "event_id", event.ID)
 	return nil
+}
+
+// uploadFile uploads a file to Mattermost and returns the file ID.
+func (p *Plugin) uploadFile(ctx context.Context, channelID, filename string, content []byte) (string, error) {
+	var buf bytes.Buffer
+	w := multipart.NewWriter(&buf)
+	w.WriteField("channel_id", channelID)
+	part, err := w.CreateFormFile("files", filename)
+	if err != nil {
+		return "", fmt.Errorf("create form file: %w", err)
+	}
+	part.Write(content)
+	w.Close()
+
+	uploadURL, err := url.JoinPath(p.cfg.URL, "/api/v4/files")
+	if err != nil {
+		return "", fmt.Errorf("build url: %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, "POST", uploadURL, &buf)
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("Content-Type", w.FormDataContentType())
+	req.Header.Set("Authorization", "Bearer "+p.token)
+
+	resp, err := p.client.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("upload: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusCreated {
+		respBody, _ := io.ReadAll(resp.Body)
+		return "", fmt.Errorf("upload api error %d: %s", resp.StatusCode, string(respBody))
+	}
+
+	var result struct {
+		FileInfos []struct {
+			ID string `json:"id"`
+		} `json:"file_infos"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return "", fmt.Errorf("decode upload response: %w", err)
+	}
+	if len(result.FileInfos) == 0 {
+		return "", fmt.Errorf("no file info in upload response")
+	}
+	return result.FileInfos[0].ID, nil
 }
 
 func formatMessage(event plugin.Event) string {

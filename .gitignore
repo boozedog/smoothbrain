@@ -2,5 +2,7 @@
 .todos/
 smoothbrain
 *.db
+*.db-wal
+*.db-shm
 result
 .env

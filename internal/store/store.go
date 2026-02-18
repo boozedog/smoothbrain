@@ -32,6 +32,19 @@ CREATE TABLE IF NOT EXISTS supervisor_log (
     result TEXT,
     timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
 );
+
+CREATE TABLE IF NOT EXISTS pipeline_runs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    event_id TEXT NOT NULL,
+    route TEXT NOT NULL,
+    status TEXT NOT NULL,
+    started_at DATETIME NOT NULL,
+    finished_at DATETIME,
+    duration_ms INTEGER,
+    error TEXT,
+    steps TEXT,
+    FOREIGN KEY (event_id) REFERENCES events(id)
+);
 `
 
 type Store struct {

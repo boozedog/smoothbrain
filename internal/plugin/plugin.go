@@ -36,6 +36,17 @@ type Transform interface {
 	Transform(ctx context.Context, event Event, action string, params map[string]any) (Event, error)
 }
 
+// CommandInfo describes a subcommand that a source plugin can dispatch.
+type CommandInfo struct {
+	Name        string
+	Description string
+}
+
+// CommandAware is implemented by plugins that accept a list of routable commands.
+type CommandAware interface {
+	SetCommands(commands []CommandInfo)
+}
+
 // WebhookRegistrar lets source plugins register HTTP handlers.
 type WebhookRegistrar interface {
 	RegisterWebhook(name string, handler http.HandlerFunc)

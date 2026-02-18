@@ -20,11 +20,12 @@ type HTTPConfig struct {
 }
 
 type RouteConfig struct {
-	Name     string       `json:"name"`
-	Source   string       `json:"source"`
-	Event    string       `json:"event"`
-	Pipeline []StepConfig `json:"pipeline"`
-	Sink     SinkConfig   `json:"sink"`
+	Name        string       `json:"name"`
+	Description string       `json:"description"`
+	Source      string       `json:"source"`
+	Event       string       `json:"event"`
+	Pipeline    []StepConfig `json:"pipeline"`
+	Sink        SinkConfig   `json:"sink"`
 }
 
 type StepConfig struct {

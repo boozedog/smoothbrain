@@ -4,9 +4,36 @@
   "log_level": "debug",
   "plugins": {
     "uptime-kuma": {"webhook_token": "$UPTIMEKUMA_WEBHOOK_TOKEN"},
-    "xai": {"model": "grok-3", "api_key": "$XAI_API_KEY"},
+    "xai": {"model": "grok-4-1-fast-non-reasoning", "api_key": "$XAI_API_KEY"},
     "mattermost": {"url": "$MATTERMOST_URL", "token": "$MATTERMOST_TOKEN", "listen": true}
   },
-  "routes": [],
+  "routes": [
+    {
+      "name": "mattermost-twitter-search",
+      "description": "Twitter/X search assistant",
+      "source": "mattermost",
+      "event": "x",
+      "pipeline": [
+        {
+          "plugin": "xai",
+          "action": "summarize",
+          "params": {
+            "prompt": "You are a Twitter/X search assistant. The user's message is a search topic. Use your knowledge of recent tweets and discussions on X/Twitter about this topic to provide a summary of the most relevant and popular posts. For each tweet you reference, include the direct link (https://x.com/username/status/id). If you don't have relevant information, say so. Be concise."
+          }
+        }
+      ],
+      "sink": {"plugin": "mattermost", "params": {}}
+    },
+    {
+      "name": "mattermost-webmd",
+      "description": "Fetch a URL as markdown",
+      "source": "mattermost",
+      "event": "md",
+      "pipeline": [
+        {"plugin": "webmd", "action": "fetch", "params": {}}
+      ],
+      "sink": {"plugin": "mattermost", "params": {}}
+    }
+  ],
   "supervisor": {"tasks": []}
 }
