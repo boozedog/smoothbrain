@@ -1,6 +1,6 @@
 .sidecar/
 .todos/
-smoothbrain
+/smoothbrain
 *.db
 *.db-wal
 *.db-shm
