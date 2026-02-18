@@ -1,44 +1,57 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="dark">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>smoothbrain</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css">
   <script src="https://unpkg.com/htmx.org@2.0.4"></script>
+  <script src="https://unpkg.com/htmx-ext-ws@2.0.2/ws.js"></script>
   <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { font-family: system-ui, -apple-system, sans-serif; background: #0a0a0a; color: #e0e0e0; padding: 2rem; }
-    h1 { font-size: 1.5rem; margin-bottom: 1.5rem; color: #fff; }
-    h2 { font-size: 1.1rem; margin-bottom: 1rem; color: #aaa; }
-    .card { background: #1a1a1a; border: 1px solid #333; border-radius: 8px; padding: 1.25rem; margin-bottom: 1.5rem; }
-    .status-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; }
-    .status-ok { background: #22c55e; }
-    table { width: 100%; border-collapse: collapse; font-size: 0.875rem; }
-    th { text-align: left; padding: 0.5rem; border-bottom: 1px solid #333; color: #888; font-weight: 500; }
-    td { padding: 0.5rem; border-bottom: 1px solid #1f1f1f; }
-    .mono { font-family: ui-monospace, monospace; font-size: 0.8rem; }
+    .mono { font-family: var(--pico-font-family-monospace); font-size: 0.8rem; }
     .badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 0.75rem; font-weight: 500; }
     .badge-source { background: #1e3a5f; color: #60a5fa; }
     .badge-type { background: #3b1f1f; color: #f87171; }
-    .empty { color: #555; text-align: center; padding: 2rem; }
+    .empty { color: var(--pico-muted-color); text-align: center; padding: 2rem; }
     #events-table { min-height: 100px; }
+    tr.event-row { cursor: pointer; }
+    tr.event-row:hover { background: rgba(255,255,255,0.03); }
+    tr.event-row td:first-child::before { content: "▶ "; font-size: 0.65rem; color: var(--pico-muted-color); }
+    tr.event-row.open td:first-child::before { content: "▼ "; }
+    tr.payload-row { display: none; }
+    tr.payload-row.open { display: table-row; }
+    tr.payload-row td { padding: 0; }
+    tr.payload-row pre { white-space: pre-wrap; word-break: break-all; max-height: 300px; overflow: auto; margin: 0; padding: 0.75rem 1rem; font-size: 0.78rem; background: rgba(0,0,0,0.2); }
   </style>
+  <script>
+    document.addEventListener("click", function(e) {
+      var row = e.target.closest("tr.event-row");
+      if (!row) return;
+      var next = row.nextElementSibling;
+      if (next && next.classList.contains("payload-row")) {
+        row.classList.toggle("open");
+        next.classList.toggle("open");
+      }
+    });
+  </script>
 </head>
 <body>
-  <h1>smoothbrain</h1>
+  <main class="container">
+    <h1>smoothbrain</h1>
 
-  <div class="card">
-    <h2>Health</h2>
-    <div id="health" hx-get="/api/health" hx-trigger="load, every 10s" hx-swap="innerHTML">
-      loading...
-    </div>
-  </div>
+    <article>
+      <h2>Health</h2>
+      <div id="health" hx-get="/api/health" hx-trigger="load, every 10s" hx-swap="innerHTML">
+        loading...
+      </div>
+    </article>
 
-  <div class="card">
-    <h2>Recent Events</h2>
-    <div id="events-table" hx-get="/api/events/html" hx-trigger="load, every 5s" hx-swap="innerHTML">
-      loading...
-    </div>
-  </div>
+    <article>
+      <h2>Recent Events</h2>
+      <div hx-ext="ws" ws-connect="/ws">
+        <div id="events-table">loading...</div>
+      </div>
+    </article>
+  </main>
 </body>
 </html>

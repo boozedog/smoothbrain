@@ -3,3 +3,4 @@
 smoothbrain
 *.db
 result
+.env

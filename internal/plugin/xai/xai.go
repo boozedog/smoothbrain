@@ -16,6 +16,7 @@ import (
 
 type Config struct {
 	Model      string `json:"model"`
+	APIKey     string `json:"api_key"`
 	APIKeyFile string `json:"api_key_file"`
 }
 
@@ -41,6 +42,7 @@ func (p *Plugin) Init(cfg json.RawMessage) error {
 		return fmt.Errorf("xai config: %w", err)
 	}
 
+	p.apiKey = p.cfg.APIKey
 	if p.cfg.APIKeyFile != "" {
 		key, err := os.ReadFile(p.cfg.APIKeyFile)
 		if err != nil {

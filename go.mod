@@ -3,7 +3,9 @@ module github.com/dmarx/smoothbrain
 go 1.25.0
 
 require (
+	github.com/coder/websocket v1.8.14
 	github.com/google/uuid v1.6.0
+	github.com/lmittmann/tint v1.1.3
 	modernc.org/sqlite v1.46.0
 )
 

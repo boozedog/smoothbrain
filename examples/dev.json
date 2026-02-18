@@ -1,10 +1,11 @@
 {
-  "http": {"address": "127.0.0.1:8080"},
+  "http": {"address": "0.0.0.0:8080"},
   "database": "smoothbrain.db",
+  "log_level": "debug",
   "plugins": {
-    "uptime-kuma": {},
-    "xai": {"model": "grok-3"},
-    "mattermost": {"url": "http://localhost"}
+    "uptime-kuma": {"webhook_token": "$UPTIMEKUMA_WEBHOOK_TOKEN"},
+    "xai": {"model": "grok-3", "api_key": "$XAI_API_KEY"},
+    "mattermost": {"url": "$MATTERMOST_URL", "token": "$MATTERMOST_TOKEN", "listen": true}
   },
   "routes": [],
   "supervisor": {"tasks": []}

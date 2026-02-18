@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"html"
+	"io"
 	"io/fs"
 	"log/slog"
 	"net/http"
@@ -22,7 +23,7 @@ type Server struct {
 	log   *slog.Logger
 }
 
-func NewServer(s *store.Store, log *slog.Logger) *Server {
+func NewServer(s *store.Store, log *slog.Logger, hub *Hub) *Server {
 	srv := &Server{
 		mux:   http.NewServeMux(),
 		store: s,
@@ -31,6 +32,7 @@ func NewServer(s *store.Store, log *slog.Logger) *Server {
 	srv.mux.HandleFunc("GET /api/health", srv.handleHealth)
 	srv.mux.HandleFunc("GET /api/events", srv.handleEvents)
 	srv.mux.HandleFunc("GET /api/events/html", srv.handleEventsHTML)
+	srv.mux.Handle("GET /ws", hub)
 
 	// Serve embedded static files at root.
 	webRoot, err := fs.Sub(webFS, "web")
@@ -59,45 +61,23 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
-	events := s.queryEvents()
+	events := queryEvents(s.store, s.log)
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(events)
 }
 
 func (s *Server) handleEventsHTML(w http.ResponseWriter, r *http.Request) {
-	events := s.queryEvents()
+	events := queryEvents(s.store, s.log)
 	w.Header().Set("Content-Type", "text/html")
-
-	if len(events) == 0 {
-		fmt.Fprint(w, `<div class="empty">No events yet.</div>`)
-		return
-	}
-
-	var b strings.Builder
-	b.WriteString(`<table><thead><tr><th>Time</th><th>Source</th><th>Type</th><th>Route</th><th>ID</th></tr></thead><tbody>`)
-	for _, e := range events {
-		b.WriteString("<tr>")
-		b.WriteString(fmt.Sprintf(`<td class="mono">%s</td>`, html.EscapeString(str(e["timestamp"]))))
-		b.WriteString(fmt.Sprintf(`<td><span class="badge badge-source">%s</span></td>`, html.EscapeString(str(e["source"]))))
-		b.WriteString(fmt.Sprintf(`<td><span class="badge badge-type">%s</span></td>`, html.EscapeString(str(e["type"]))))
-		b.WriteString(fmt.Sprintf(`<td>%s</td>`, html.EscapeString(str(e["route"]))))
-		id := str(e["id"])
-		if len(id) > 8 {
-			id = id[:8]
-		}
-		b.WriteString(fmt.Sprintf(`<td class="mono">%s</td>`, html.EscapeString(id)))
-		b.WriteString("</tr>")
-	}
-	b.WriteString(`</tbody></table>`)
-	fmt.Fprint(w, b.String())
+	renderEventsHTML(w, events)
 }
 
-func (s *Server) queryEvents() []map[string]any {
-	rows, err := s.store.DB().Query(
+func queryEvents(s *store.Store, log *slog.Logger) []map[string]any {
+	rows, err := s.DB().Query(
 		`SELECT id, source, type, payload, timestamp, COALESCE(route, '') FROM events ORDER BY created_at DESC LIMIT 50`,
 	)
 	if err != nil {
-		s.log.Error("query events failed", "error", err)
+		log.Error("query events failed", "error", err)
 		return []map[string]any{}
 	}
 	defer rows.Close()
@@ -118,12 +98,53 @@ func (s *Server) queryEvents() []map[string]any {
 		})
 	}
 	if err := rows.Err(); err != nil {
-		s.log.Error("rows iteration error", "error", err)
+		log.Error("rows iteration error", "error", err)
 	}
 	if events == nil {
 		events = []map[string]any{}
 	}
 	return events
+}
+
+func renderEventsHTML(w io.Writer, events []map[string]any) {
+	if len(events) == 0 {
+		fmt.Fprint(w, `<div class="empty">No events yet.</div>`)
+		return
+	}
+
+	var b strings.Builder
+	b.WriteString(`<table class="striped"><thead><tr><th>Time</th><th>Source</th><th>Type</th><th>Route</th><th>ID</th></tr></thead><tbody>`)
+	for _, e := range events {
+		// Summary row (clickable).
+		b.WriteString(`<tr class="event-row">`)
+		b.WriteString(fmt.Sprintf(`<td class="mono">%s</td>`, html.EscapeString(str(e["timestamp"]))))
+		b.WriteString(fmt.Sprintf(`<td><span class="badge badge-source">%s</span></td>`, html.EscapeString(str(e["source"]))))
+		b.WriteString(fmt.Sprintf(`<td><span class="badge badge-type">%s</span></td>`, html.EscapeString(str(e["type"]))))
+		b.WriteString(fmt.Sprintf(`<td>%s</td>`, html.EscapeString(str(e["route"]))))
+		id := str(e["id"])
+		if len(id) > 8 {
+			id = id[:8]
+		}
+		b.WriteString(fmt.Sprintf(`<td class="mono">%s</td>`, html.EscapeString(id)))
+		b.WriteString("</tr>")
+
+		// Payload row (hidden until toggled).
+		var pretty string
+		if raw, ok := e["payload"].(json.RawMessage); ok {
+			var buf json.RawMessage
+			if json.Unmarshal(raw, &buf) == nil {
+				if pp, err := json.MarshalIndent(buf, "", "  "); err == nil {
+					pretty = string(pp)
+				}
+			}
+		}
+		if pretty == "" {
+			pretty = str(e["payload"])
+		}
+		b.WriteString(fmt.Sprintf(`<tr class="payload-row"><td colspan="5"><pre>%s</pre></td></tr>`, html.EscapeString(pretty)))
+	}
+	b.WriteString(`</tbody></table>`)
+	fmt.Fprint(w, b.String())
 }
 
 func str(v any) string {

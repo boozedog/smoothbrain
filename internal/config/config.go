@@ -9,6 +9,7 @@ import (
 type Config struct {
 	HTTP       HTTPConfig                 `json:"http"`
 	Database   string                     `json:"database"`
+	LogLevel   string                     `json:"log_level"`
 	Plugins    map[string]json.RawMessage `json:"plugins"`
 	Routes     []RouteConfig              `json:"routes"`
 	Supervisor SupervisorConfig           `json:"supervisor"`
@@ -53,6 +54,9 @@ func Load(path string) (*Config, error) {
 	if err != nil {
 		return nil, fmt.Errorf("reading config %s: %w", path, err)
 	}
+
+	// Expand $VAR and ${VAR} references with environment variables.
+	data = []byte(os.ExpandEnv(string(data)))
 
 	cfg := &Config{
 		HTTP:     HTTPConfig{Address: "127.0.0.1:8080"},
