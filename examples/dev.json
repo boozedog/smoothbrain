@@ -5,7 +5,8 @@
   "plugins": {
     "uptime-kuma": {"webhook_token": "$UPTIMEKUMA_WEBHOOK_TOKEN"},
     "xai": {"model": "grok-4-1-fast-non-reasoning", "api_key": "$XAI_API_KEY"},
-    "mattermost": {"url": "$MATTERMOST_URL", "token": "$MATTERMOST_TOKEN", "listen": true}
+    "mattermost": {"url": "$MATTERMOST_URL", "token": "$MATTERMOST_TOKEN", "listen": true},
+    "claudecode": {"binary": "/Users/david/.local/bin/claude"}
   },
   "routes": [
     {
@@ -31,6 +32,17 @@
       "event": "md",
       "pipeline": [
         {"plugin": "webmd", "action": "fetch", "params": {}}
+      ],
+      "sink": {"plugin": "mattermost", "params": {}}
+    },
+    {
+      "name": "mattermost-claudecode",
+      "description": "Ask Claude Code a question",
+      "source": "mattermost",
+      "event": "cc",
+      "timeout": "120s",
+      "pipeline": [
+        {"plugin": "claudecode", "action": "ask", "params": {}}
       ],
       "sink": {"plugin": "mattermost", "params": {}}
     }

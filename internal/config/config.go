@@ -24,6 +24,7 @@ type RouteConfig struct {
 	Description string       `json:"description"`
 	Source      string       `json:"source"`
 	Event       string       `json:"event"`
+	Timeout     string       `json:"timeout,omitempty"` // Go duration string, default "30s"
 	Pipeline    []StepConfig `json:"pipeline"`
 	Sink        SinkConfig   `json:"sink"`
 }

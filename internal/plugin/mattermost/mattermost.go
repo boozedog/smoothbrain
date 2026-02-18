@@ -278,10 +278,15 @@ func (p *Plugin) handleWSMessage(data []byte) {
 		if subcmd != "help" && subcmd != "" {
 			helpText = fmt.Sprintf("Unknown command `%s`.\n\n%s", subcmd, helpText)
 		}
-		if err := p.sendEphemeral(post.ChannelID, post.UserID, helpText); err != nil {
-			p.log.Error("mattermost: send ephemeral", "error", err)
+		if err := p.sendPost(post.ChannelID, "", helpText); err != nil {
+			p.log.Error("mattermost: send help", "error", err)
 		}
 		return
+	}
+
+	// Add thinking reaction for immediate feedback.
+	if err := p.addReaction(post.ID, "hourglass_flowing_sand"); err != nil {
+		p.log.Error("mattermost: add reaction", "error", err)
 	}
 
 	p.bus.Emit(plugin.Event{
@@ -325,20 +330,58 @@ func (p *Plugin) buildHelpText() string {
 	return b.String()
 }
 
-// sendEphemeral posts an ephemeral message visible only to the given user.
-func (p *Plugin) sendEphemeral(channelID, userID, text string) error {
-	body, err := json.Marshal(map[string]any{
-		"user_id": userID,
-		"post": map[string]string{
-			"channel_id": channelID,
-			"message":    text,
-		},
+// sendPost posts a normal message to a channel, optionally in a thread.
+func (p *Plugin) sendPost(channelID, rootID, text string) error {
+	post := map[string]any{
+		"channel_id": channelID,
+		"message":    text,
+	}
+	if rootID != "" {
+		post["root_id"] = rootID
+	}
+
+	body, err := json.Marshal(post)
+	if err != nil {
+		return err
+	}
+
+	u, err := url.JoinPath(p.cfg.URL, "/api/v4/posts")
+	if err != nil {
+		return err
+	}
+
+	req, err := http.NewRequest("POST", u, bytes.NewReader(body))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+p.token)
+
+	resp, err := p.client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusCreated {
+		respBody, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("post api error %d: %s", resp.StatusCode, string(respBody))
+	}
+	return nil
+}
+
+// addReaction adds an emoji reaction to a post.
+func (p *Plugin) addReaction(postID, emojiName string) error {
+	body, err := json.Marshal(map[string]string{
+		"user_id":    p.botID,
+		"post_id":    postID,
+		"emoji_name": emojiName,
 	})
 	if err != nil {
 		return err
 	}
 
-	u, err := url.JoinPath(p.cfg.URL, "/api/v4/posts/ephemeral")
+	u, err := url.JoinPath(p.cfg.URL, "/api/v4/reactions")
 	if err != nil {
 		return err
 	}
@@ -358,7 +401,33 @@ func (p *Plugin) sendEphemeral(channelID, userID, text string) error {
 
 	if resp.StatusCode != http.StatusOK {
 		respBody, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("ephemeral api error %d: %s", resp.StatusCode, string(respBody))
+		return fmt.Errorf("reaction api error %d: %s", resp.StatusCode, string(respBody))
+	}
+	return nil
+}
+
+// removeReaction removes an emoji reaction from a post.
+func (p *Plugin) removeReaction(postID, emojiName string) error {
+	u, err := url.JoinPath(p.cfg.URL, fmt.Sprintf("/api/v4/users/%s/posts/%s/reactions/%s", p.botID, postID, emojiName))
+	if err != nil {
+		return err
+	}
+
+	req, err := http.NewRequest("DELETE", u, nil)
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Authorization", "Bearer "+p.token)
+
+	resp, err := p.client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		respBody, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("remove reaction api error %d: %s", resp.StatusCode, string(respBody))
 	}
 	return nil
 }
@@ -429,6 +498,14 @@ func (p *Plugin) HandleEvent(ctx context.Context, event plugin.Event) error {
 	}
 
 	p.log.Info("mattermost message sent", "channel", channel, "event_id", event.ID)
+
+	// Remove thinking reaction now that the reply is posted.
+	if postID, _ := event.Payload["post_id"].(string); postID != "" {
+		if err := p.removeReaction(postID, "hourglass_flowing_sand"); err != nil {
+			p.log.Debug("mattermost: remove reaction", "error", err)
+		}
+	}
+
 	return nil
 }
 

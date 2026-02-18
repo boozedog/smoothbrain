@@ -3,6 +3,7 @@ package core
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"log/slog"
 	"maps"
 	"time"
@@ -55,7 +56,13 @@ func (r *Router) HandleEvent(event plugin.Event) {
 }
 
 func (r *Router) executeRoute(route config.RouteConfig, event plugin.Event) {
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	timeout := 30 * time.Second
+	if route.Timeout != "" {
+		if d, err := time.ParseDuration(route.Timeout); err == nil {
+			timeout = d
+		}
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
 	r.log.Info("route matched", "route", route.Name, "event_id", event.ID)
@@ -93,6 +100,7 @@ func (r *Router) executeRoute(route config.RouteConfig, event plugin.Event) {
 				DurationMs: time.Since(stepStart).Milliseconds(),
 				Error:      errMsg,
 			})
+			r.deliverError(ctx, route, current, errMsg)
 			r.finishRun(runID, startedAt, "failed", errMsg, steps)
 			return
 		}
@@ -109,6 +117,7 @@ func (r *Router) executeRoute(route config.RouteConfig, event plugin.Event) {
 				DurationMs: elapsed,
 				Error:      err.Error(),
 			})
+			r.deliverError(ctx, route, current, err.Error())
 			r.finishRun(runID, startedAt, "failed", err.Error(), steps)
 			return
 		}
@@ -167,6 +176,19 @@ func (r *Router) executeRoute(route config.RouteConfig, event plugin.Event) {
 
 	r.finishRun(runID, startedAt, "completed", "", steps)
 	r.log.Info("route completed", "route", route.Name, "event_id", event.ID)
+}
+
+// deliverError attempts to send an error message through the route's sink.
+func (r *Router) deliverError(ctx context.Context, route config.RouteConfig, event plugin.Event, errMsg string) {
+	sink, ok := r.registry.GetSink(route.Sink.Plugin)
+	if !ok {
+		return
+	}
+	event.Payload["summary"] = fmt.Sprintf("**Error:** %s", errMsg)
+	maps.Copy(event.Payload, route.Sink.Params)
+	if err := sink.HandleEvent(ctx, event); err != nil {
+		r.log.Error("failed to deliver error to sink", "plugin", route.Sink.Plugin, "error", err)
+	}
 }
 
 func (r *Router) finishRun(runID int64, startedAt time.Time, status, errMsg string, steps []stepResult) {
