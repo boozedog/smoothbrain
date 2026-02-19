@@ -4,7 +4,7 @@ templ EventsTable(events []eventView) {
 	if len(events) == 0 {
 		<div class="empty">No events yet.</div>
 	} else {
-		<table class="table">
+		<table class="uk-table uk-table-divider uk-table-hover uk-table-sm">
 			<thead>
 				<tr>
 					<th>Time</th>
@@ -18,14 +18,14 @@ templ EventsTable(events []eventView) {
 				for _, e := range events {
 					<tr class="event-row">
 						<td class="mono">{ e.Timestamp }</td>
-						<td><span class="badge badge-source">{ e.Source }</span></td>
-						<td><span class="badge badge-type">{ e.Type }</span></td>
+						<td><span class="uk-label" style={ sourceLabelStyle(e.Source) }>{ e.Source }</span></td>
+						<td><span class="uk-label uk-label-primary">{ e.Type }</span></td>
 						<td>{ e.Route }</td>
 						<td class="mono">{ shortID(e.ID) }</td>
 					</tr>
 					<tr class="payload-row">
-						<td colspan="5">
-							<pre>{ e.PrettyPayload }</pre>
+						<td colspan="5" class="payload-cell">
+							<pre class="json-pre">@templ.Raw(e.PrettyPayload)</pre>
 							if len(e.Runs) > 0 {
 								@PipelineRuns(e.Runs)
 							}
@@ -82,4 +82,118 @@ templ EventsWrapper(events []eventView) {
 	<div id="events-table">
 		@EventsTable(events)
 	</div>
+}
+
+templ SystemLog(entries []LogEntry) {
+	if len(entries) == 0 {
+		<div class="empty">No log entries yet.</div>
+	} else {
+		<table class="uk-table uk-table-divider uk-table-sm">
+			<thead>
+				<tr>
+					<th class="log-col-time">Time</th>
+					<th class="log-col-level">Level</th>
+					<th>Message</th>
+					<th>Details</th>
+				</tr>
+			</thead>
+			<tbody>
+				for i := len(entries) - 1; i >= 0; i-- {
+					<tr class={ logLevelClass(entries[i].Level) }>
+						<td class="mono">{ entries[i].Time }</td>
+						<td>{ entries[i].Level }</td>
+						<td>{ entries[i].Message }</td>
+						<td class="mono log-attrs">{ entries[i].Attrs }</td>
+					</tr>
+				}
+			</tbody>
+		</table>
+	}
+}
+
+templ StatusTab(info statusInfo) {
+	<div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+		<div class="uk-card">
+			<div class="uk-card-header">
+				<h3 class="uk-card-title">Health</h3>
+			</div>
+			<div class="uk-card-body">
+				<div id="health" hx-get="/api/health/html" hx-trigger="load, every 10s" hx-swap="innerHTML">
+					loading...
+				</div>
+			</div>
+		</div>
+
+		<div class="uk-card">
+			<div class="uk-card-header">
+				<h3 class="uk-card-title">Plugins</h3>
+			</div>
+			<div class="uk-card-body">
+				<table class="uk-table uk-table-sm uk-table-divider">
+					<thead>
+						<tr>
+							<th>Name</th>
+							<th>Type</th>
+						</tr>
+					</thead>
+					<tbody>
+						for _, p := range info.Plugins {
+							<tr>
+								<td>
+									<span class="source-dot" style={ "background-color: " + p.Color }></span>
+									{ p.Name }
+								</td>
+								<td class="mono">{ p.Types }</td>
+							</tr>
+						}
+					</tbody>
+				</table>
+			</div>
+		</div>
+	</div>
+
+	<div class="grid grid-cols-1 gap-4 mb-4">
+		<div class="uk-card">
+			<div class="uk-card-header">
+				<h3 class="uk-card-title">Routes</h3>
+			</div>
+			<div class="uk-card-body">
+				if len(info.Routes) == 0 {
+					<div class="empty">No routes configured.</div>
+				} else {
+					<table class="uk-table uk-table-sm uk-table-divider">
+						<thead>
+							<tr>
+								<th>Name</th>
+								<th>Source</th>
+								<th>Event</th>
+								<th>Pipeline</th>
+								<th>Sink</th>
+							</tr>
+						</thead>
+						<tbody>
+							for _, r := range info.Routes {
+								<tr>
+									<td>{ r.Name }</td>
+									<td><span class="uk-label" style={ "background-color: " + r.SourceColor + "; color: #fff;" }>{ r.Source }</span></td>
+									<td class="mono">{ r.Event }</td>
+									<td class="mono">{ r.Pipeline }</td>
+									<td class="mono">{ r.Sink }</td>
+								</tr>
+							}
+						</tbody>
+					</table>
+				}
+			</div>
+		</div>
+	</div>
+
+}
+
+templ HealthBadge(ok bool) {
+	if ok {
+		<span class="uk-label uk-label-primary">● OK</span>
+	} else {
+		<span class="uk-label uk-label-destructive">● DOWN</span>
+	}
 }

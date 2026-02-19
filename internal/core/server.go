@@ -7,6 +7,8 @@ import (
 	"log/slog"
 	"net/http"
 
+	"github.com/dmarx/smoothbrain/internal/config"
+	"github.com/dmarx/smoothbrain/internal/plugin"
 	"github.com/dmarx/smoothbrain/internal/store"
 )
 
@@ -14,21 +16,30 @@ import (
 var webFS embed.FS
 
 type Server struct {
-	mux   *http.ServeMux
-	store *store.Store
-	log   *slog.Logger
+	mux      *http.ServeMux
+	store    *store.Store
+	log      *slog.Logger
+	registry *plugin.Registry
+	routes   []config.RouteConfig
+	logBuf   *LogBuffer
 }
 
-func NewServer(s *store.Store, log *slog.Logger, hub *Hub) *Server {
+func NewServer(s *store.Store, log *slog.Logger, hub *Hub, registry *plugin.Registry, routes []config.RouteConfig, logBuf *LogBuffer) *Server {
 	srv := &Server{
-		mux:   http.NewServeMux(),
-		store: s,
-		log:   log,
+		mux:      http.NewServeMux(),
+		store:    s,
+		log:      log,
+		registry: registry,
+		routes:   routes,
+		logBuf:   logBuf,
 	}
 	srv.mux.HandleFunc("GET /api/health", srv.handleHealth)
+	srv.mux.HandleFunc("GET /api/health/html", srv.handleHealthHTML)
 	srv.mux.HandleFunc("GET /api/events", srv.handleEvents)
 	srv.mux.HandleFunc("GET /api/events/html", srv.handleEventsHTML)
 	srv.mux.HandleFunc("GET /api/events/{id}/runs", srv.handleEventRuns)
+	srv.mux.HandleFunc("GET /api/status/html", srv.handleStatusHTML)
+	srv.mux.HandleFunc("GET /api/log/html", srv.handleLogHTML)
 	srv.mux.Handle("GET /ws", hub)
 
 	// Serve embedded static files at root.
@@ -75,6 +86,23 @@ func (s *Server) handleEventRuns(w http.ResponseWriter, r *http.Request) {
 	runs := queryPipelineRuns(s.store, s.log, eventID)
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(runs)
+}
+
+func (s *Server) handleHealthHTML(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/html")
+	HealthBadge(true).Render(r.Context(), w)
+}
+
+func (s *Server) handleStatusHTML(w http.ResponseWriter, r *http.Request) {
+	info := buildStatusInfo(s.registry, s.routes)
+	w.Header().Set("Content-Type", "text/html")
+	StatusTab(info).Render(r.Context(), w)
+}
+
+func (s *Server) handleLogHTML(w http.ResponseWriter, r *http.Request) {
+	entries := s.logBuf.Entries()
+	w.Header().Set("Content-Type", "text/html")
+	SystemLog(entries).Render(r.Context(), w)
 }
 
 func queryEvents(s *store.Store, log *slog.Logger) []map[string]any {

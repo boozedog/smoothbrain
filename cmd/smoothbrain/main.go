@@ -28,8 +28,11 @@ func main() {
 	configPath := flag.String("config", "/etc/smoothbrain/config.json", "path to config file")
 	flag.Parse()
 
+	// Log buffer captures recent entries for the web UI.
+	logBuf := core.NewLogBuffer(200)
+
 	// Bootstrap logger for config loading.
-	log := slog.New(tint.NewHandler(os.Stderr, &tint.Options{TimeFormat: time.TimeOnly}))
+	log := slog.New(core.NewLogHandler(tint.NewHandler(os.Stderr, &tint.Options{TimeFormat: time.TimeOnly}), logBuf))
 
 	cfg, err := config.Load(*configPath)
 	if err != nil {
@@ -49,10 +52,10 @@ func main() {
 	default:
 		level = slog.LevelInfo
 	}
-	log = slog.New(tint.NewHandler(os.Stderr, &tint.Options{
+	log = slog.New(core.NewLogHandler(tint.NewHandler(os.Stderr, &tint.Options{
 		Level:      level,
 		TimeFormat: time.TimeOnly,
-	}))
+	}), logBuf))
 	log.Info("config loaded", "http", cfg.HTTP.Address, "database", cfg.Database, "log_level", level.String())
 
 	db, err := store.Open(cfg.Database)
@@ -115,7 +118,7 @@ func main() {
 	defer registry.StopAll()
 
 	// HTTP server
-	srv := core.NewServer(db, log, hub)
+	srv := core.NewServer(db, log, hub, registry, cfg.Routes, logBuf)
 	registry.RegisterWebhooks(srv)
 	httpServer := &http.Server{
 		Addr:    cfg.HTTP.Address,

@@ -100,6 +100,36 @@ func (r *Registry) RegisterWebhooks(reg WebhookRegistrar) {
 	}
 }
 
+// PluginInfo describes a registered plugin for the status UI.
+type PluginInfo struct {
+	Name  string
+	Types []string // "source", "transform", "sink"
+}
+
+// All returns info about every registered plugin in registration order.
+func (r *Registry) All() []PluginInfo {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	infos := make([]PluginInfo, 0, len(r.order))
+	for _, p := range r.order {
+		info := PluginInfo{Name: p.Name()}
+		if _, ok := p.(WebhookSource); ok {
+			info.Types = append(info.Types, "source")
+		}
+		if _, ok := p.(Transform); ok {
+			info.Types = append(info.Types, "transform")
+		}
+		if _, ok := p.(Sink); ok {
+			info.Types = append(info.Types, "sink")
+		}
+		if len(info.Types) == 0 {
+			info.Types = []string{"source"}
+		}
+		infos = append(infos, info)
+	}
+	return infos
+}
+
 func (r *Registry) StopAll() {
 	r.mu.RLock()
 	defer r.mu.RUnlock()

@@ -3,8 +3,14 @@ package core
 import (
 	"encoding/json"
 	"fmt"
+	"hash/fnv"
+	"html"
 	"log/slog"
+	"regexp"
+	"strings"
 
+	"github.com/dmarx/smoothbrain/internal/config"
+	"github.com/dmarx/smoothbrain/internal/plugin"
 	"github.com/dmarx/smoothbrain/internal/store"
 )
 
@@ -29,17 +35,17 @@ func toEventViews(events []map[string]any, s *store.Store, log *slog.Logger) []e
 			Route:     str(e["route"]),
 		}
 
-		// Pretty-print the JSON payload.
+		// Pretty-print and syntax-highlight the JSON payload.
 		if raw, ok := e["payload"].(json.RawMessage); ok {
 			var buf json.RawMessage
 			if json.Unmarshal(raw, &buf) == nil {
 				if pp, err := json.MarshalIndent(buf, "", "  "); err == nil {
-					v.PrettyPayload = string(pp)
+					v.PrettyPayload = colorizeJSON(string(pp))
 				}
 			}
 		}
 		if v.PrettyPayload == "" {
-			v.PrettyPayload = str(e["payload"])
+			v.PrettyPayload = html.EscapeString(str(e["payload"]))
 		}
 
 		v.Runs = queryPipelineRuns(s, log, v.ID)
@@ -51,13 +57,13 @@ func toEventViews(events []map[string]any, s *store.Store, log *slog.Logger) []e
 func runBadgeClass(status string) string {
 	switch status {
 	case "completed":
-		return "badge badge-run-completed"
+		return "uk-label uk-label-primary"
 	case "failed":
-		return "badge badge-run-failed"
+		return "uk-label uk-label-destructive"
 	case "running":
-		return "badge badge-run-running"
+		return "uk-label uk-label-secondary"
 	default:
-		return "badge"
+		return "uk-label"
 	}
 }
 
@@ -85,4 +91,121 @@ func parseSteps(stepsJSON string) []stepResult {
 		return nil
 	}
 	return steps
+}
+
+// sourceColor returns a stable CSS hsl color for any source/plugin name.
+func sourceColor(name string) string {
+	h := fnv.New32a()
+	h.Write([]byte(name))
+	hue := h.Sum32() % 360
+	return fmt.Sprintf("hsl(%d, 70%%, 55%%)", hue)
+}
+
+// sourceLabelStyle returns inline CSS for a colored source badge.
+func sourceLabelStyle(name string) string {
+	return fmt.Sprintf("background-color: %s; color: #fff;", sourceColor(name))
+}
+
+type statusInfo struct {
+	Plugins []pluginStatus
+	Routes  []routeStatus
+}
+
+type pluginStatus struct {
+	Name  string
+	Types string
+	Color string
+}
+
+type routeStatus struct {
+	Name        string
+	Source      string
+	Event       string
+	Pipeline    string
+	Sink        string
+	SourceColor string
+}
+
+func logLevelClass(level string) string {
+	switch level {
+	case "ERROR":
+		return "log-error"
+	case "WARN":
+		return "log-warn"
+	case "DEBUG":
+		return "log-debug"
+	default:
+		return ""
+	}
+}
+
+// jsonTokenRe matches JSON tokens: strings, numbers, booleans, null.
+var jsonTokenRe = regexp.MustCompile(`("(?:\\.|[^"\\])*")\s*:|("(?:\\.|[^"\\])*")|\b(true|false)\b|\b(null)\b|(-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?)`)
+
+// colorizeJSON takes pretty-printed JSON and returns HTML with syntax-colored spans.
+func colorizeJSON(src string) string {
+	var b strings.Builder
+	b.Grow(len(src) * 2)
+	last := 0
+	for _, m := range jsonTokenRe.FindAllStringSubmatchIndex(src, -1) {
+		// Write text before this match (punctuation, whitespace).
+		b.WriteString(html.EscapeString(src[last:m[0]]))
+		last = m[1]
+
+		switch {
+		case m[2] >= 0: // group 1: key string (before colon)
+			b.WriteString(`<span class="j-key">`)
+			b.WriteString(html.EscapeString(src[m[2]:m[3]]))
+			b.WriteString(`</span>`)
+			// Write the colon + spacing that follows the key capture
+			b.WriteString(html.EscapeString(src[m[3]:m[1]]))
+		case m[4] >= 0: // group 2: value string
+			b.WriteString(`<span class="j-str">`)
+			b.WriteString(html.EscapeString(src[m[4]:m[5]]))
+			b.WriteString(`</span>`)
+		case m[6] >= 0: // group 3: boolean
+			b.WriteString(`<span class="j-bool">`)
+			b.WriteString(src[m[6]:m[7]])
+			b.WriteString(`</span>`)
+		case m[8] >= 0: // group 4: null
+			b.WriteString(`<span class="j-null">`)
+			b.WriteString(src[m[8]:m[9]])
+			b.WriteString(`</span>`)
+		case m[10] >= 0: // group 5: number
+			b.WriteString(`<span class="j-num">`)
+			b.WriteString(src[m[10]:m[11]])
+			b.WriteString(`</span>`)
+		}
+	}
+	b.WriteString(html.EscapeString(src[last:]))
+	return b.String()
+}
+
+func buildStatusInfo(reg *plugin.Registry, routes []config.RouteConfig) statusInfo {
+	var info statusInfo
+
+	for _, p := range reg.All() {
+		info.Plugins = append(info.Plugins, pluginStatus{
+			Name:  p.Name,
+			Types: strings.Join(p.Types, ", "),
+			Color: sourceColor(p.Name),
+		})
+	}
+
+	for _, r := range routes {
+		var steps []string
+		for _, s := range r.Pipeline {
+			steps = append(steps, s.Plugin+"."+s.Action)
+		}
+		info.Routes = append(info.Routes, routeStatus{
+			Name:        r.Name,
+			Source:      r.Source,
+			Event:       r.Event,
+			Pipeline:    strings.Join(steps, " → "),
+			Sink:        r.Sink.Plugin,
+			SourceColor: sourceColor(r.Source),
+		})
+	}
+
+	return info
 }
