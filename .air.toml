@@ -1,0 +1,23 @@
+root = "."
+tmp_dir = "tmp"
+
+[build]
+  pre_cmd = ["templ generate"]
+  cmd = "go build -o ./tmp/smoothbrain ./cmd/smoothbrain"
+  entrypoint = ["./tmp/smoothbrain", "-config", "./examples/dev.json"]
+  include_ext = ["go", "templ", "html"]
+  include_dir = ["internal", "cmd"]
+  exclude_dir = ["assets", "tmp", "vendor", "data", "testdata"]
+  exclude_regex = ["_test.go", "_templ.go"]
+  exclude_unchanged = false
+  delay = 1000
+  stop_on_error = true
+  kill_delay = "0s"
+  log = "build-errors.log"
+  send_interrupt = true
+
+[screen]
+  clear_on_rebuild = true
+
+[misc]
+  clean_on_exit = true

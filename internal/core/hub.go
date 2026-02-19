@@ -3,7 +3,6 @@ package core
 import (
 	"bytes"
 	"context"
-	"fmt"
 	"log/slog"
 	"net/http"
 	"sync"
@@ -66,11 +65,10 @@ func (h *Hub) Run(ctx context.Context) {
 
 func (h *Hub) broadcast() {
 	events := queryEvents(h.store, h.log)
+	views := toEventViews(events, h.store, h.log)
 
 	var buf bytes.Buffer
-	buf.WriteString(`<div id="events-table">`)
-	renderEventsHTML(&buf, events, h.store, h.log)
-	buf.WriteString(`</div>`)
+	EventsWrapper(views).Render(context.Background(), &buf)
 	msg := buf.Bytes()
 
 	h.mu.Lock()
@@ -107,10 +105,9 @@ func (h *Hub) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	// Send initial state.
 	events := queryEvents(h.store, h.log)
+	views := toEventViews(events, h.store, h.log)
 	var buf bytes.Buffer
-	fmt.Fprint(&buf, `<div id="events-table">`)
-	renderEventsHTML(&buf, events, h.store, h.log)
-	fmt.Fprint(&buf, `</div>`)
+	EventsWrapper(views).Render(ctx, &buf)
 	conn.Write(ctx, websocket.MessageText, buf.Bytes())
 
 	// Read loop keeps connection alive; exits on disconnect.

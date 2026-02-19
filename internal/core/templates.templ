@@ -1,0 +1,85 @@
+package core
+
+templ EventsTable(events []eventView) {
+	if len(events) == 0 {
+		<div class="empty">No events yet.</div>
+	} else {
+		<table class="table">
+			<thead>
+				<tr>
+					<th>Time</th>
+					<th>Source</th>
+					<th>Type</th>
+					<th>Route</th>
+					<th>ID</th>
+				</tr>
+			</thead>
+			<tbody>
+				for _, e := range events {
+					<tr class="event-row">
+						<td class="mono">{ e.Timestamp }</td>
+						<td><span class="badge badge-source">{ e.Source }</span></td>
+						<td><span class="badge badge-type">{ e.Type }</span></td>
+						<td>{ e.Route }</td>
+						<td class="mono">{ shortID(e.ID) }</td>
+					</tr>
+					<tr class="payload-row">
+						<td colspan="5">
+							<pre>{ e.PrettyPayload }</pre>
+							if len(e.Runs) > 0 {
+								@PipelineRuns(e.Runs)
+							}
+						</td>
+					</tr>
+				}
+			</tbody>
+		</table>
+	}
+}
+
+templ PipelineRuns(runs []pipelineRun) {
+	<div class="pipeline-runs">
+		for _, r := range runs {
+			<div class="pipeline-run">
+				<span class={ runBadgeClass(r.Status) }>{ r.Status }</span>
+				{ " " }
+				<strong>{ r.Route }</strong>
+				if r.DurationMs != nil {
+					{ " " }
+					<span class="mono">{ durationStr(*r.DurationMs) }</span>
+				}
+				if r.Error != "" {
+					{ " " }
+					<span class="run-error">{ r.Error }</span>
+				}
+				@renderSteps(r.Steps)
+			</div>
+		}
+	</div>
+}
+
+templ renderSteps(stepsJSON string) {
+	if steps := parseSteps(stepsJSON); len(steps) > 0 {
+		<ul class="pipeline-steps">
+			for _, step := range steps {
+				<li>
+					<span class={ runBadgeClass(step.Status) }>{ step.Status }</span>
+					{ " " }
+					{ step.Plugin + "." + step.Action }
+					{ " " }
+					<span class="mono">{ durationStr(step.DurationMs) }</span>
+					if step.Error != "" {
+						{ " " }
+						<span class="run-error">{ step.Error }</span>
+					}
+				</li>
+			}
+		</ul>
+	}
+}
+
+templ EventsWrapper(events []eventView) {
+	<div id="events-table">
+		@EventsTable(events)
+	</div>
+}

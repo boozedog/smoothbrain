@@ -1,36 +1,59 @@
 <!DOCTYPE html>
-<html lang="en" data-theme="dark">
+<html lang="en" class="dark">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>smoothbrain</title>
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css">
+  <script src="/vendor/tailwind/browser.js"></script>
+  <link rel="stylesheet" href="/vendor/basecoat/basecoat.cdn.min.css">
+  <script src="/vendor/basecoat/js/all.min.js" defer></script>
   <script src="https://unpkg.com/htmx.org@2.0.4"></script>
   <script src="https://unpkg.com/htmx-ext-ws@2.0.2/ws.js"></script>
-  <style>
-    .mono { font-family: var(--pico-font-family-monospace); font-size: 0.8rem; }
-    .badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 0.75rem; font-weight: 500; }
-    .badge-source { background: #1e3a5f; color: #60a5fa; }
-    .badge-type { background: #3b1f1f; color: #f87171; }
-    .empty { color: var(--pico-muted-color); text-align: center; padding: 2rem; }
+  <style type="text/tailwindcss">
+    @theme {
+      --color-background: var(--background);
+      --color-foreground: var(--foreground);
+      --color-card: var(--card);
+      --color-card-foreground: var(--card-foreground);
+      --color-popover: var(--popover);
+      --color-popover-foreground: var(--popover-foreground);
+      --color-primary: var(--primary);
+      --color-primary-foreground: var(--primary-foreground);
+      --color-secondary: var(--secondary);
+      --color-secondary-foreground: var(--secondary-foreground);
+      --color-muted: var(--muted);
+      --color-muted-foreground: var(--muted-foreground);
+      --color-accent: var(--accent);
+      --color-accent-foreground: var(--accent-foreground);
+      --color-destructive: var(--destructive);
+      --color-border: var(--border);
+      --color-input: var(--input);
+      --color-ring: var(--ring);
+    }
+    @layer base {
+      .mono { @apply font-mono text-sm; }
+      .empty { @apply text-center py-8; color: var(--muted-foreground); }
+    }
+    .badge.badge-source { @apply bg-blue-950 text-blue-400; border-color: transparent; }
+    .badge.badge-type { @apply bg-red-950 text-red-400; border-color: transparent; }
+    .badge.badge-run-completed { @apply bg-green-950 text-green-400; border-color: transparent; }
+    .badge.badge-run-failed { @apply bg-red-950 text-red-400; border-color: transparent; }
+    .badge.badge-run-running { @apply bg-yellow-950 text-yellow-400; border-color: transparent; }
     #events-table { min-height: 100px; }
     tr.event-row { cursor: pointer; }
-    tr.event-row:hover { background: rgba(255,255,255,0.03); }
-    tr.event-row td:first-child::before { content: "▶ "; font-size: 0.65rem; color: var(--pico-muted-color); }
+    tr.event-row:hover { background: var(--muted); }
+    tr.event-row td:first-child::before { content: "▶ "; font-size: 0.65rem; color: var(--muted-foreground); }
     tr.event-row.open td:first-child::before { content: "▼ "; }
     tr.payload-row { display: none; }
     tr.payload-row.open { display: table-row; }
     tr.payload-row td { padding: 0; }
-    tr.payload-row pre { white-space: pre-wrap; word-break: break-all; max-height: 300px; overflow: auto; margin: 0; padding: 0.75rem 1rem; font-size: 0.78rem; background: rgba(0,0,0,0.2); }
-    .pipeline-runs { padding: 0.75rem 1rem; border-top: 1px solid rgba(255,255,255,0.06); }
+    tr.payload-row pre { white-space: pre-wrap; word-break: break-all; max-height: 300px; overflow: auto; margin: 0; padding: 0.75rem 1rem; font-size: 0.78rem; background: var(--muted); }
+    .pipeline-runs { padding: 0.75rem 1rem; border-top: 1px solid var(--border); }
     .pipeline-run { margin-bottom: 0.5rem; }
     .pipeline-run strong { font-size: 0.85rem; }
     .pipeline-steps { list-style: none; margin: 0.25rem 0 0 1rem; padding: 0; font-size: 0.8rem; }
     .pipeline-steps li { margin-bottom: 0.15rem; }
-    .badge-run-completed { background: #14532d; color: #4ade80; }
-    .badge-run-failed { background: #7f1d1d; color: #f87171; }
-    .badge-run-running { background: #713f12; color: #facc15; }
-    .run-error { color: #f87171; font-size: 0.78rem; }
+    .run-error { color: var(--destructive); font-size: 0.78rem; }
   </style>
   <script>
     document.addEventListener("click", function(e) {
@@ -45,22 +68,30 @@
   </script>
 </head>
 <body>
-  <main class="container">
-    <h1>smoothbrain</h1>
+  <main class="container mx-auto p-6 max-w-screen-xl">
+    <h1 class="text-2xl font-bold mb-6">smoothbrain</h1>
 
-    <article>
-      <h2>Health</h2>
-      <div id="health" hx-get="/api/health" hx-trigger="load, every 10s" hx-swap="innerHTML">
-        loading...
-      </div>
-    </article>
+    <div class="card mb-4">
+      <header>
+        <h2>Health</h2>
+      </header>
+      <section>
+        <div id="health" hx-get="/api/health" hx-trigger="load, every 10s" hx-swap="innerHTML">
+          loading...
+        </div>
+      </section>
+    </div>
 
-    <article>
-      <h2>Recent Events</h2>
-      <div hx-ext="ws" ws-connect="/ws">
-        <div id="events-table">loading...</div>
-      </div>
-    </article>
+    <div class="card">
+      <header>
+        <h2>Recent Events</h2>
+      </header>
+      <section>
+        <div hx-ext="ws" ws-connect="/ws">
+          <div id="events-table">loading...</div>
+        </div>
+      </section>
+    </div>
   </main>
 </body>
 </html>

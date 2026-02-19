@@ -1,3 +1,8 @@
+# github.com/a-h/templ v0.3.977
+## explicit; go 1.23.0
+github.com/a-h/templ
+github.com/a-h/templ/runtime
+github.com/a-h/templ/safehtml
 # github.com/coder/websocket v1.8.14
 ## explicit; go 1.23
 github.com/coder/websocket

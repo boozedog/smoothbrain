@@ -3,13 +3,9 @@ package core
 import (
 	"embed"
 	"encoding/json"
-	"fmt"
-	"html"
-	"io"
 	"io/fs"
 	"log/slog"
 	"net/http"
-	"strings"
 
 	"github.com/dmarx/smoothbrain/internal/store"
 )
@@ -69,8 +65,9 @@ func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleEventsHTML(w http.ResponseWriter, r *http.Request) {
 	events := queryEvents(s.store, s.log)
+	views := toEventViews(events, s.store, s.log)
 	w.Header().Set("Content-Type", "text/html")
-	renderEventsHTML(w, events, s.store, s.log)
+	EventsTable(views).Render(r.Context(), w)
 }
 
 func (s *Server) handleEventRuns(w http.ResponseWriter, r *http.Request) {
@@ -154,98 +151,4 @@ func queryPipelineRuns(s *store.Store, log *slog.Logger, eventID string) []pipel
 		runs = []pipelineRun{}
 	}
 	return runs
-}
-
-func renderEventsHTML(w io.Writer, events []map[string]any, s *store.Store, log *slog.Logger) {
-	if len(events) == 0 {
-		fmt.Fprint(w, `<div class="empty">No events yet.</div>`)
-		return
-	}
-
-	var b strings.Builder
-	b.WriteString(`<table class="striped"><thead><tr><th>Time</th><th>Source</th><th>Type</th><th>Route</th><th>ID</th></tr></thead><tbody>`)
-	for _, e := range events {
-		// Summary row (clickable).
-		b.WriteString(`<tr class="event-row">`)
-		b.WriteString(fmt.Sprintf(`<td class="mono">%s</td>`, html.EscapeString(str(e["timestamp"]))))
-		b.WriteString(fmt.Sprintf(`<td><span class="badge badge-source">%s</span></td>`, html.EscapeString(str(e["source"]))))
-		b.WriteString(fmt.Sprintf(`<td><span class="badge badge-type">%s</span></td>`, html.EscapeString(str(e["type"]))))
-		b.WriteString(fmt.Sprintf(`<td>%s</td>`, html.EscapeString(str(e["route"]))))
-		id := str(e["id"])
-		if len(id) > 8 {
-			id = id[:8]
-		}
-		b.WriteString(fmt.Sprintf(`<td class="mono">%s</td>`, html.EscapeString(id)))
-		b.WriteString("</tr>")
-
-		// Detail row (hidden until toggled): payload + pipeline runs.
-		b.WriteString(`<tr class="payload-row"><td colspan="5">`)
-
-		// Payload section.
-		var pretty string
-		if raw, ok := e["payload"].(json.RawMessage); ok {
-			var buf json.RawMessage
-			if json.Unmarshal(raw, &buf) == nil {
-				if pp, err := json.MarshalIndent(buf, "", "  "); err == nil {
-					pretty = string(pp)
-				}
-			}
-		}
-		if pretty == "" {
-			pretty = str(e["payload"])
-		}
-		b.WriteString(fmt.Sprintf(`<pre>%s</pre>`, html.EscapeString(pretty)))
-
-		// Pipeline runs section.
-		runs := queryPipelineRuns(s, log, str(e["id"]))
-		if len(runs) > 0 {
-			renderPipelineRunsHTML(&b, runs)
-		}
-
-		b.WriteString(`</td></tr>`)
-	}
-	b.WriteString(`</tbody></table>`)
-	fmt.Fprint(w, b.String())
-}
-
-func renderPipelineRunsHTML(b *strings.Builder, runs []pipelineRun) {
-	b.WriteString(`<div class="pipeline-runs">`)
-	for _, r := range runs {
-		badgeClass := "badge-run-" + r.Status
-		b.WriteString(fmt.Sprintf(`<div class="pipeline-run"><span class="badge %s">%s</span> `, badgeClass, html.EscapeString(r.Status)))
-		b.WriteString(fmt.Sprintf(`<strong>%s</strong>`, html.EscapeString(r.Route)))
-		if r.DurationMs != nil {
-			b.WriteString(fmt.Sprintf(` <span class="mono">%dms</span>`, *r.DurationMs))
-		}
-		if r.Error != "" {
-			b.WriteString(fmt.Sprintf(` <span class="run-error">%s</span>`, html.EscapeString(r.Error)))
-		}
-
-		// Render steps.
-		var steps []stepResult
-		if json.Unmarshal([]byte(r.Steps), &steps) == nil && len(steps) > 0 {
-			b.WriteString(`<ul class="pipeline-steps">`)
-			for _, step := range steps {
-				stepBadge := "badge-run-" + step.Status
-				b.WriteString(fmt.Sprintf(`<li><span class="badge %s">%s</span> %s.%s <span class="mono">%dms</span>`,
-					stepBadge, html.EscapeString(step.Status),
-					html.EscapeString(step.Plugin), html.EscapeString(step.Action),
-					step.DurationMs))
-				if step.Error != "" {
-					b.WriteString(fmt.Sprintf(` <span class="run-error">%s</span>`, html.EscapeString(step.Error)))
-				}
-				b.WriteString(`</li>`)
-			}
-			b.WriteString(`</ul>`)
-		}
-		b.WriteString(`</div>`)
-	}
-	b.WriteString(`</div>`)
-}
-
-func str(v any) string {
-	if s, ok := v.(string); ok {
-		return s
-	}
-	return fmt.Sprintf("%v", v)
 }
