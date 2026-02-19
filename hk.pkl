@@ -1,0 +1,23 @@
+amends "package://github.com/jdx/hk/releases/download/v1.36.0/hk@1.36.0#/Config.pkl"
+import "package://github.com/jdx/hk/releases/download/v1.36.0/hk@1.36.0#/Builtins.pkl"
+
+local linters = new Mapping<String, Step> {
+    ["trivy-vuln"] {
+        check = "trivy fs --scanners vuln --exit-code 1 --severity HIGH,CRITICAL ."
+    }
+    ["trivy-secret"] {
+        check = "trivy fs --scanners secret --exit-code 1 ."
+    }
+    ["trivy-misconfig"] {
+        check = "trivy fs --scanners misconfig --exit-code 1 ."
+    }
+}
+
+hooks {
+    ["pre-push"] {
+        steps = linters
+    }
+    ["check"] {
+        steps = linters
+    }
+}
