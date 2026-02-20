@@ -11,12 +11,14 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/dmarx/smoothbrain/internal/auth"
 	"github.com/dmarx/smoothbrain/internal/config"
 	"github.com/dmarx/smoothbrain/internal/core"
 	"github.com/dmarx/smoothbrain/internal/plugin"
 	"github.com/dmarx/smoothbrain/internal/plugin/claudecode"
 	"github.com/dmarx/smoothbrain/internal/plugin/mattermost"
 	"github.com/dmarx/smoothbrain/internal/plugin/obsidian"
+	"github.com/dmarx/smoothbrain/internal/plugin/tailscale"
 	"github.com/dmarx/smoothbrain/internal/plugin/td"
 	"github.com/dmarx/smoothbrain/internal/plugin/uptimekuma"
 	"github.com/dmarx/smoothbrain/internal/plugin/webmd"
@@ -76,6 +78,7 @@ func main() {
 	registry.Register(webmd.New(log))
 	registry.Register(claudecode.New(log))
 	registry.Register(obsidian.New(log))
+	registry.Register(tailscale.New(log))
 
 	if err := registry.InitAll(cfg.Plugins); err != nil {
 		log.Error("failed to init plugins", "error", err)
@@ -126,9 +129,22 @@ func main() {
 	// HTTP server
 	srv := core.NewServer(db, log, hub, registry, cfg.Routes, logBuf)
 	registry.RegisterWebhooks(srv)
+
+	var handler http.Handler = srv.Handler()
+	if cfg.Auth.RPID != "" {
+		a, err := auth.New(cfg.Auth, db.DB(), log)
+		if err != nil {
+			log.Error("failed to init auth", "error", err)
+			os.Exit(1)
+		}
+		a.RegisterRoutes(srv.Mux())
+		handler = a.Middleware(srv.Handler())
+		log.Info("auth enabled", "rp_id", cfg.Auth.RPID)
+	}
+
 	httpServer := &http.Server{
 		Addr:    cfg.HTTP.Address,
-		Handler: srv.Handler(),
+		Handler: handler,
 	}
 
 	// Graceful shutdown

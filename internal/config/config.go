@@ -10,9 +10,16 @@ type Config struct {
 	HTTP       HTTPConfig                 `json:"http"`
 	Database   string                     `json:"database"`
 	LogLevel   string                     `json:"log_level"`
+	Auth       AuthConfig                 `json:"auth"`
 	Plugins    map[string]json.RawMessage `json:"plugins"`
 	Routes     []RouteConfig              `json:"routes"`
 	Supervisor SupervisorConfig           `json:"supervisor"`
+}
+
+type AuthConfig struct {
+	RPDisplayName string   `json:"rp_display_name"`
+	RPID          string   `json:"rp_id"`
+	RPOrigins     []string `json:"rp_origins"`
 }
 
 type HTTPConfig struct {

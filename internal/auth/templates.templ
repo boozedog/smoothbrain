@@ -1,0 +1,57 @@
+package auth
+
+templ LoginPage() {
+	<!DOCTYPE html>
+	<html lang="en" class="dark">
+	<head>
+		<meta charset="utf-8"/>
+		<meta name="viewport" content="width=device-width, initial-scale=1"/>
+		<title>smoothbrain - login</title>
+		<link rel="stylesheet" href="/vendor/frankenui/core.min.css"/>
+		<link rel="stylesheet" href="/vendor/frankenui/utilities.min.css"/>
+		<script src="/vendor/frankenui/js/core.iife.js" type="module"></script>
+		<style>
+			body { display: flex; align-items: center; justify-content: center; min-height: 100vh; background: #1a1a2e; }
+		</style>
+	</head>
+	<body>
+		<div class="uk-card uk-card-body" style="width: 400px;">
+			<h3 class="uk-card-title">smoothbrain</h3>
+			<p>Authenticate with your passkey to continue.</p>
+			<button id="login-btn" class="uk-button uk-button-primary uk-width-1-1" onclick="doLogin()">
+				Login with Passkey
+			</button>
+			<div id="error" class="uk-alert uk-alert-destructive" style="display:none; margin-top: 16px;"></div>
+		</div>
+		@templ.Raw("<script>" + loginScript + "</script>")
+	</body>
+	</html>
+}
+
+templ RegisterPage() {
+	<!DOCTYPE html>
+	<html lang="en" class="dark">
+	<head>
+		<meta charset="utf-8"/>
+		<meta name="viewport" content="width=device-width, initial-scale=1"/>
+		<title>smoothbrain - setup</title>
+		<link rel="stylesheet" href="/vendor/frankenui/core.min.css"/>
+		<link rel="stylesheet" href="/vendor/frankenui/utilities.min.css"/>
+		<script src="/vendor/frankenui/js/core.iife.js" type="module"></script>
+		<style>
+			body { display: flex; align-items: center; justify-content: center; min-height: 100vh; background: #1a1a2e; }
+		</style>
+	</head>
+	<body>
+		<div class="uk-card uk-card-body" style="width: 400px;">
+			<h3 class="uk-card-title">smoothbrain</h3>
+			<p>Create a passkey to secure your instance.</p>
+			<button id="register-btn" class="uk-button uk-button-primary uk-width-1-1" onclick="doRegister()">
+				Register Passkey
+			</button>
+			<div id="error" class="uk-alert uk-alert-destructive" style="display:none; margin-top: 16px;"></div>
+		</div>
+		@templ.Raw("<script>" + registerScript + "</script>")
+	</body>
+	</html>
+}
