@@ -1,0 +1,16 @@
+{
+  "http": {
+    "address": "127.0.0.1:9090"
+  },
+  "database": "test-obsidian.db",
+  "log_level": "debug",
+  "plugins": {
+    "obsidian": {
+      "vault_path": "~/obsidian/smoothbrain"
+    }
+  },
+  "routes": [],
+  "supervisor": {
+    "tasks": []
+  }
+}

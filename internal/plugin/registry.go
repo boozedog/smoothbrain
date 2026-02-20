@@ -2,6 +2,7 @@ package plugin
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"log/slog"
@@ -12,12 +13,14 @@ type Registry struct {
 	plugins map[string]Plugin
 	order   []Plugin
 	mu      sync.RWMutex
+	db      *sql.DB
 	log     *slog.Logger
 }
 
-func NewRegistry(log *slog.Logger) *Registry {
+func NewRegistry(log *slog.Logger, db *sql.DB) *Registry {
 	return &Registry{
 		plugins: make(map[string]Plugin),
+		db:      db,
 		log:     log,
 	}
 }
@@ -64,6 +67,9 @@ func (r *Registry) InitAll(configs map[string]json.RawMessage) error {
 	defer r.mu.RUnlock()
 	for _, p := range r.order {
 		name := p.Name()
+		if sa, ok := p.(StoreAware); ok {
+			sa.SetStore(r.db)
+		}
 		cfg, ok := configs[name]
 		if !ok {
 			cfg = json.RawMessage("{}")

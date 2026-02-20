@@ -2,6 +2,7 @@ package plugin
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"net/http"
 	"time"
@@ -50,6 +51,11 @@ type CommandAware interface {
 // WebhookRegistrar lets source plugins register HTTP handlers.
 type WebhookRegistrar interface {
 	RegisterWebhook(name string, handler http.HandlerFunc)
+}
+
+// StoreAware is implemented by plugins that need access to the SQLite database.
+type StoreAware interface {
+	SetStore(db *sql.DB)
 }
 
 // WebhookSource is implemented by plugins that provide webhook endpoints.

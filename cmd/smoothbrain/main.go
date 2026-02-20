@@ -16,6 +16,7 @@ import (
 	"github.com/dmarx/smoothbrain/internal/plugin"
 	"github.com/dmarx/smoothbrain/internal/plugin/claudecode"
 	"github.com/dmarx/smoothbrain/internal/plugin/mattermost"
+	"github.com/dmarx/smoothbrain/internal/plugin/obsidian"
 	"github.com/dmarx/smoothbrain/internal/plugin/td"
 	"github.com/dmarx/smoothbrain/internal/plugin/uptimekuma"
 	"github.com/dmarx/smoothbrain/internal/plugin/webmd"
@@ -67,13 +68,14 @@ func main() {
 	log.Info("database ready", "path", cfg.Database)
 
 	// Plugin registry
-	registry := plugin.NewRegistry(log)
+	registry := plugin.NewRegistry(log, db.DB())
 	registry.Register(uptimekuma.New(log))
 	registry.Register(td.New(log))
 	registry.Register(xai.New(log))
 	registry.Register(mattermost.New(log))
 	registry.Register(webmd.New(log))
 	registry.Register(claudecode.New(log))
+	registry.Register(obsidian.New(log))
 
 	if err := registry.InitAll(cfg.Plugins); err != nil {
 		log.Error("failed to init plugins", "error", err)
@@ -116,6 +118,10 @@ func main() {
 		os.Exit(1)
 	}
 	defer registry.StopAll()
+
+	supervisor := core.NewSupervisor(cfg.Supervisor.Tasks, bus, db, log)
+	supervisor.Start(ctx)
+	defer supervisor.Stop()
 
 	// HTTP server
 	srv := core.NewServer(db, log, hub, registry, cfg.Routes, logBuf)
