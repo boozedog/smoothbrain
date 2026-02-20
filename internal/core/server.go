@@ -57,6 +57,11 @@ func (s *Server) Handler() http.Handler {
 	return s.mux
 }
 
+// Mux returns the underlying ServeMux for registering additional routes.
+func (s *Server) Mux() *http.ServeMux {
+	return s.mux
+}
+
 // RegisterWebhook registers a POST handler at /hooks/{name}.
 func (s *Server) RegisterWebhook(name string, handler http.HandlerFunc) {
 	s.mux.HandleFunc("POST /hooks/"+name, handler)
