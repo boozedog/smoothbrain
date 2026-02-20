@@ -1,37 +1,86 @@
 <!DOCTYPE html>
-<html lang="en" data-theme="dark">
+<html lang="en" class="dark">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>smoothbrain</title>
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css">
-  <script src="https://unpkg.com/htmx.org@2.0.4"></script>
-  <script src="https://unpkg.com/htmx-ext-ws@2.0.2/ws.js"></script>
+  <link rel="stylesheet" href="/vendor/frankenui/core.min.css">
+  <link rel="stylesheet" href="/vendor/frankenui/utilities.min.css">
+  <script src="/vendor/frankenui/js/core.iife.js" type="module"></script>
+  <script src="/vendor/frankenui/js/icon.iife.js" type="module"></script>
+  <script src="/vendor/htmx/htmx.min.js"></script>
+  <script src="/vendor/htmx/ext-ws.js"></script>
+
   <style>
-    .mono { font-family: var(--pico-font-family-monospace); font-size: 0.8rem; }
-    .badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 0.75rem; font-weight: 500; }
-    .badge-source { background: #1e3a5f; color: #60a5fa; }
-    .badge-type { background: #3b1f1f; color: #f87171; }
-    .empty { color: var(--pico-muted-color); text-align: center; padding: 2rem; }
-    #events-table { min-height: 100px; }
-    tr.event-row { cursor: pointer; }
-    tr.event-row:hover { background: rgba(255,255,255,0.03); }
-    tr.event-row td:first-child::before { content: "▶ "; font-size: 0.65rem; color: var(--pico-muted-color); }
-    tr.event-row.open td:first-child::before { content: "▼ "; }
-    tr.payload-row { display: none; }
-    tr.payload-row.open { display: table-row; }
-    tr.payload-row td { padding: 0; }
-    tr.payload-row pre { white-space: pre-wrap; word-break: break-all; max-height: 300px; overflow: auto; margin: 0; padding: 0.75rem 1rem; font-size: 0.78rem; background: rgba(0,0,0,0.2); }
-    .pipeline-runs { padding: 0.75rem 1rem; border-top: 1px solid rgba(255,255,255,0.06); }
+    @font-face {
+      font-family: 'Maple Mono';
+      src: url('/vendor/maple-mono/MapleMonoNL-Regular.ttf.woff2') format('woff2');
+      font-weight: 400;
+      font-style: normal;
+      font-display: swap;
+    }
+    @font-face {
+      font-family: 'Maple Mono';
+      src: url('/vendor/maple-mono/MapleMonoNL-Bold.ttf.woff2') format('woff2');
+      font-weight: 700;
+      font-style: normal;
+      font-display: swap;
+    }
+    @font-face {
+      font-family: 'Maple Mono';
+      src: url('/vendor/maple-mono/MapleMonoNL-Italic.ttf.woff2') format('woff2');
+      font-weight: 400;
+      font-style: italic;
+      font-display: swap;
+    }
+
+    body {
+      font-family: 'Maple Mono', ui-monospace, SFMono-Regular, monospace;
+    }
+
+    .event-row { cursor: pointer; }
+    .payload-row { display: none; }
+    .payload-row.open { display: table-row; }
+    .mono { font-size: 0.85em; }
+    .pipeline-runs { margin-top: 0.75rem; }
     .pipeline-run { margin-bottom: 0.5rem; }
-    .pipeline-run strong { font-size: 0.85rem; }
-    .pipeline-steps { list-style: none; margin: 0.25rem 0 0 1rem; padding: 0; font-size: 0.8rem; }
+    .pipeline-steps { list-style: disc; margin-left: 1.5rem; margin-top: 0.25rem; }
     .pipeline-steps li { margin-bottom: 0.15rem; }
-    .badge-run-completed { background: #14532d; color: #4ade80; }
-    .badge-run-failed { background: #7f1d1d; color: #f87171; }
-    .badge-run-running { background: #713f12; color: #facc15; }
-    .run-error { color: #f87171; font-size: 0.78rem; }
+    .run-error { color: hsl(var(--destructive)); }
+    .empty { padding: 1rem; color: hsl(var(--muted-foreground)); }
+
+    .payload-cell { font-size: 0.8rem; }
+    .json-pre {
+      font-size: 0.85em;
+      line-height: 1.4;
+      margin: 0;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+    .j-key  { color: hsl(210, 80%, 65%); }
+    .j-str  { color: hsl(95, 55%, 55%); }
+    .j-num  { color: hsl(30, 85%, 60%); }
+    .j-bool { color: hsl(280, 65%, 65%); }
+    .j-null { color: hsl(var(--muted-foreground)); font-style: italic; }
+
+    .source-dot {
+      display: inline-block;
+      width: 0.6rem;
+      height: 0.6rem;
+      border-radius: 50%;
+      margin-right: 0.4rem;
+      vertical-align: middle;
+    }
+
+    .log-scroll { max-height: 500px; overflow-y: auto; }
+    .log-col-time { width: 5rem; }
+    .log-col-level { width: 4rem; }
+    .log-attrs { color: hsl(var(--muted-foreground)); font-size: 0.8em; }
+    .log-error td { color: hsl(var(--destructive)); }
+    .log-warn td { color: hsl(var(--warning, 38 92% 50%)); }
+    .log-debug td { color: hsl(var(--muted-foreground)); }
   </style>
+
   <script>
     document.addEventListener("click", function(e) {
       var row = e.target.closest("tr.event-row");
@@ -44,23 +93,38 @@
     });
   </script>
 </head>
-<body>
-  <main class="container">
-    <h1>smoothbrain</h1>
+<body class="bg-background text-foreground">
+  <div hx-ext="ws" ws-connect="/ws">
+    <main class="uk-container uk-container-xl p-6">
+      <h1 class="text-2xl font-bold mb-4">smoothbrain</h1>
 
-    <article>
-      <h2>Health</h2>
-      <div id="health" hx-get="/api/health" hx-trigger="load, every 10s" hx-swap="innerHTML">
-        loading...
-      </div>
-    </article>
+      <ul uk-tab>
+        <li class="uk-active"><a href="#">Event Log</a></li>
+        <li><a href="#">System Status</a></li>
+        <li><a href="#">System Log</a></li>
+      </ul>
 
-    <article>
-      <h2>Recent Events</h2>
-      <div hx-ext="ws" ws-connect="/ws">
-        <div id="events-table">loading...</div>
-      </div>
-    </article>
-  </main>
+      <ul class="uk-switcher mt-4">
+        <!-- Tab 1: Event Log -->
+        <li>
+          <div id="events-table">loading...</div>
+        </li>
+
+        <!-- Tab 2: System Status -->
+        <li>
+          <div id="status-tab" hx-get="/api/status/html" hx-trigger="intersect once" hx-swap="innerHTML">
+            loading...
+          </div>
+        </li>
+
+        <!-- Tab 3: System Log -->
+        <li>
+          <div id="system-log" hx-get="/api/log/html" hx-trigger="intersect once, every 3s" hx-swap="innerHTML">
+            loading...
+          </div>
+        </li>
+      </ul>
+    </main>
+  </div>
 </body>
 </html>

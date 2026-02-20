@@ -1,2 +1,5 @@
+[tools]
+just = "latest"
+
 [env]
 _.file = ".env"

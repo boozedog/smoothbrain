@@ -6,7 +6,8 @@
     "uptime-kuma": {"webhook_token": "$UPTIMEKUMA_WEBHOOK_TOKEN"},
     "xai": {"model": "grok-4-1-fast-non-reasoning", "api_key": "$XAI_API_KEY"},
     "mattermost": {"url": "$MATTERMOST_URL", "token": "$MATTERMOST_TOKEN", "listen": true},
-    "claudecode": {"binary": "/Users/david/.local/bin/claude"}
+    "claudecode": {"binary": "/Users/david/.local/bin/claude"},
+    "obsidian": {"vault_path": "~/obsidian/smoothbrain"}
   },
   "routes": [
     {
@@ -43,6 +44,50 @@
       "timeout": "120s",
       "pipeline": [
         {"plugin": "claudecode", "action": "ask", "params": {}}
+      ],
+      "sink": {"plugin": "mattermost", "params": {}}
+    },
+    {
+      "name": "mattermost-note",
+      "description": "Add to daily diary",
+      "source": "mattermost",
+      "event": "note",
+      "pipeline": [
+        {"plugin": "obsidian", "action": "write_note", "params": {}}
+      ],
+      "sink": {"plugin": "mattermost", "params": {}}
+    },
+    {
+      "name": "mattermost-vault",
+      "description": "Search the Obsidian vault",
+      "source": "mattermost",
+      "event": "vault",
+      "timeout": "60s",
+      "pipeline": [
+        {"plugin": "obsidian", "action": "search", "params": {}},
+        {"plugin": "xai", "action": "summarize", "params": {"prompt": "Answer the user's question using the vault search results provided. Be concise and specific."}}
+      ],
+      "sink": {"plugin": "mattermost", "params": {}}
+    },
+    {
+      "name": "mattermost-vehicle-log",
+      "description": "Log vehicle maintenance",
+      "source": "mattermost",
+      "event": "log",
+      "timeout": "60s",
+      "pipeline": [
+        {"plugin": "xai", "action": "summarize", "params": {"prompt": "Parse this vehicle maintenance command. Extract JSON: {\"vehicle\": \"\", \"description\": \"\", \"miles\": \"\", \"cost\": \"\", \"location\": \"\"}. Only return JSON."}},
+        {"plugin": "obsidian", "action": "write_log", "params": {}}
+      ],
+      "sink": {"plugin": "mattermost", "params": {}}
+    },
+    {
+      "name": "mattermost-link",
+      "description": "Save a link to daily note",
+      "source": "mattermost",
+      "event": "link",
+      "pipeline": [
+        {"plugin": "obsidian", "action": "write_link", "params": {}}
       ],
       "sink": {"plugin": "mattermost", "params": {}}
     }
