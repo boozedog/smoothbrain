@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"context"
 	"crypto/rand"
 	"database/sql"
 	"encoding/hex"
@@ -23,9 +24,10 @@ type challengeEntry struct {
 
 // Auth provides WebAuthn-based passkey authentication.
 type Auth struct {
-	wa  *webauthn.WebAuthn
-	db  *sql.DB
-	log *slog.Logger
+	wa              *webauthn.WebAuthn
+	db              *sql.DB
+	log             *slog.Logger
+	sessionDuration time.Duration
 
 	mu         sync.Mutex
 	challenges map[string]challengeEntry
@@ -62,17 +64,27 @@ func New(cfg config.AuthConfig, db *sql.DB, log *slog.Logger) (*Auth, error) {
 
 	_, err = db.Exec(`CREATE TABLE IF NOT EXISTS sessions (
 		token      TEXT PRIMARY KEY,
+		expires_at DATETIME,
 		created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 	)`)
 	if err != nil {
 		return nil, fmt.Errorf("auth: create sessions table: %w", err)
 	}
 
+	// Add expires_at column for existing databases (ignore error if already exists).
+	_, _ = db.Exec(`ALTER TABLE sessions ADD COLUMN expires_at DATETIME`)
+
+	sessionDuration := cfg.SessionDuration
+	if sessionDuration == 0 {
+		sessionDuration = 24 * time.Hour
+	}
+
 	return &Auth{
-		wa:         wa,
-		db:         db,
-		log:        log,
-		challenges: make(map[string]challengeEntry),
+		wa:              wa,
+		db:              db,
+		log:             log,
+		sessionDuration: sessionDuration,
+		challenges:      make(map[string]challengeEntry),
 	}, nil
 }
 
@@ -118,9 +130,15 @@ func (a *Auth) loadCredentials() []webauthn.Credential {
 			copy(c.Authenticator.AAGUID[:], aaguid)
 		}
 		if transportJSON != "" {
-			json.Unmarshal([]byte(transportJSON), &c.Transport)
+			if err := json.Unmarshal([]byte(transportJSON), &c.Transport); err != nil {
+				a.log.Error("auth: unmarshal transport", "error", err, "credential_id", c.ID)
+			}
 		}
 		creds = append(creds, c)
+	}
+	if err := rows.Err(); err != nil {
+		a.log.Error("auth: iterate credentials", "error", err)
+		return nil
 	}
 	return creds
 }
@@ -187,9 +205,14 @@ func (a *Auth) FinishLogin(r *http.Request) (string, error) {
 
 	creds := a.loadCredentials()
 	user := &User{credentials: creds}
-	_, err := a.wa.FinishLogin(user, *session, r)
+	cred, err := a.wa.FinishLogin(user, *session, r)
 	if err != nil {
 		return "", fmt.Errorf("auth: finish login: %w", err)
+	}
+
+	// Update sign count (non-fatal).
+	if _, err := a.db.Exec(`UPDATE webauthn_credentials SET sign_count = ? WHERE credential_id = ?`, cred.Authenticator.SignCount, cred.ID); err != nil {
+		a.log.Error("auth: update sign count", "error", err)
 	}
 
 	// Generate session token.
@@ -199,7 +222,8 @@ func (a *Auth) FinishLogin(r *http.Request) (string, error) {
 	}
 	token := hex.EncodeToString(tokenBytes)
 
-	_, err = a.db.Exec(`INSERT INTO sessions (token) VALUES (?)`, token)
+	expiresAt := time.Now().Add(a.sessionDuration)
+	_, err = a.db.Exec(`INSERT INTO sessions (token, expires_at) VALUES (?, ?)`, token, expiresAt)
 	if err != nil {
 		return "", fmt.Errorf("auth: store session: %w", err)
 	}
@@ -209,7 +233,7 @@ func (a *Auth) FinishLogin(r *http.Request) (string, error) {
 // ValidateSession returns true if the given token exists in the sessions table.
 func (a *Auth) ValidateSession(token string) bool {
 	var count int
-	err := a.db.QueryRow(`SELECT COUNT(*) FROM sessions WHERE token = ?`, token).Scan(&count)
+	err := a.db.QueryRow(`SELECT COUNT(*) FROM sessions WHERE token = ? AND expires_at > ?`, token, time.Now()).Scan(&count)
 	if err != nil {
 		a.log.Error("auth: validate session", "error", err)
 		return false
@@ -223,6 +247,33 @@ func (a *Auth) DeleteSession(token string) {
 	if err != nil {
 		a.log.Error("auth: delete session", "error", err)
 	}
+}
+
+func (a *Auth) cleanupExpiredSessions() {
+	result, err := a.db.Exec(`DELETE FROM sessions WHERE expires_at <= ?`, time.Now())
+	if err != nil {
+		a.log.Error("auth: cleanup expired sessions", "error", err)
+		return
+	}
+	if n, _ := result.RowsAffected(); n > 0 {
+		a.log.Info("auth: cleaned up expired sessions", "count", n)
+	}
+}
+
+// StartCleanup runs periodic cleanup of expired sessions.
+func (a *Auth) StartCleanup(ctx context.Context) {
+	ticker := time.NewTicker(1 * time.Hour)
+	go func() {
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				a.cleanupExpiredSessions()
+			}
+		}
+	}()
 }
 
 func (a *Auth) storeChallenge(key string, data *webauthn.SessionData) {

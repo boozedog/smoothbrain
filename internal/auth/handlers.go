@@ -96,7 +96,30 @@ func (a *Auth) handleLoginFinish(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]bool{"ok": true})
 }
 
+// isValidOrigin checks if the request origin matches any configured RP origin.
+func isValidOrigin(r *http.Request, allowedOrigins []string) bool {
+	origin := r.Header.Get("Origin")
+	if origin == "" {
+		// Fall back to Referer header.
+		ref := r.Header.Get("Referer")
+		if ref == "" {
+			return false
+		}
+		origin = ref
+	}
+	for _, allowed := range allowedOrigins {
+		if strings.HasPrefix(origin, allowed) {
+			return true
+		}
+	}
+	return false
+}
+
 func (a *Auth) handleLogout(w http.ResponseWriter, r *http.Request) {
+	if !isValidOrigin(r, a.wa.Config.RPOrigins) {
+		http.Error(w, "forbidden: invalid origin", http.StatusForbidden)
+		return
+	}
 	cookie, err := r.Cookie("session")
 	if err == nil {
 		a.DeleteSession(cookie.Value)

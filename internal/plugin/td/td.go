@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -80,6 +81,10 @@ func (p *Plugin) handleWebhook(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "unauthorized", http.StatusUnauthorized)
 			return
 		}
+		if !isTimestampFresh(ts, 5*time.Minute) {
+			http.Error(w, "unauthorized: timestamp too old", http.StatusUnauthorized)
+			return
+		}
 	}
 
 	var payload webhookPayload
@@ -133,6 +138,25 @@ func verifySignature(secret, timestamp string, body []byte, signature string) bo
 	mac.Write(body)
 
 	return hmac.Equal(mac.Sum(nil), expected)
+}
+
+// isTimestampFresh returns true if the timestamp is within maxAge of now.
+func isTimestampFresh(ts string, maxAge time.Duration) bool {
+	// Try RFC3339 first.
+	t, err := time.Parse(time.RFC3339, ts)
+	if err != nil {
+		// Try Unix epoch (seconds as string).
+		sec, err := strconv.ParseInt(ts, 10, 64)
+		if err != nil {
+			return false
+		}
+		t = time.Unix(sec, 0)
+	}
+	diff := time.Since(t)
+	if diff < 0 {
+		diff = -diff
+	}
+	return diff <= maxAge
 }
 
 type webhookPayload struct {

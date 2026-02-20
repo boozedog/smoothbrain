@@ -1,7 +1,6 @@
 package auth
 
 import (
-	"net"
 	"net/http"
 	"strings"
 )
@@ -13,12 +12,7 @@ func (a *Auth) Middleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		path := r.URL.Path
 
-		// Bypass authentication for localhost and public paths.
-		host, _, _ := net.SplitHostPort(r.RemoteAddr)
-		if host == "127.0.0.1" || host == "::1" {
-			next.ServeHTTP(w, r)
-			return
-		}
+		// Bypass authentication for public paths.
 		if strings.HasPrefix(path, "/auth/") ||
 			strings.HasPrefix(path, "/hooks/") ||
 			strings.HasPrefix(path, "/vendor/") ||

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"time"
 )
 
 type Config struct {
@@ -17,9 +18,10 @@ type Config struct {
 }
 
 type AuthConfig struct {
-	RPDisplayName string   `json:"rp_display_name"`
-	RPID          string   `json:"rp_id"`
-	RPOrigins     []string `json:"rp_origins"`
+	RPDisplayName   string        `json:"rp_display_name"`
+	RPID            string        `json:"rp_id"`
+	RPOrigins       []string      `json:"rp_origins"`
+	SessionDuration time.Duration `json:"session_duration"`
 }
 
 type HTTPConfig struct {
