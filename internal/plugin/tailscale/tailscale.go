@@ -63,3 +63,21 @@ func (p *Plugin) Stop() error {
 	p.log.Info("tailscale: serve removed", "service", svcName)
 	return nil
 }
+
+func (p *Plugin) HealthCheck(ctx context.Context) plugin.HealthStatus {
+	cmd := exec.CommandContext(ctx, "tailscale", "status", "--json")
+	out, err := cmd.Output()
+	if err != nil {
+		return plugin.HealthStatus{Status: plugin.StatusError, Message: "tailscale status failed: " + err.Error()}
+	}
+	var status struct {
+		BackendState string `json:"BackendState"`
+	}
+	if err := json.Unmarshal(out, &status); err != nil {
+		return plugin.HealthStatus{Status: plugin.StatusError, Message: "parse status: " + err.Error()}
+	}
+	if status.BackendState != "Running" {
+		return plugin.HealthStatus{Status: plugin.StatusDegraded, Message: "backend state: " + status.BackendState}
+	}
+	return plugin.HealthStatus{Status: plugin.StatusOK}
+}
