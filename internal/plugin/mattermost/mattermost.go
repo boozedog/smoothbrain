@@ -16,7 +16,7 @@ import (
 	"time"
 
 	"github.com/coder/websocket"
-	"github.com/dmarx/smoothbrain/internal/plugin"
+	"github.com/boozedog/smoothbrain/internal/plugin"
 	"github.com/google/uuid"
 )
 

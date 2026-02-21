@@ -133,7 +133,7 @@ Or use the test script:
 
 ```nix
 {
-  inputs.smoothbrain.url = "github:dmarx/smoothbrain";
+  inputs.smoothbrain.url = "github:boozedog/smoothbrain";
 
   imports = [ smoothbrain.nixosModules.default ];
 

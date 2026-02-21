@@ -17,7 +17,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/dmarx/smoothbrain/internal/plugin"
+	"github.com/boozedog/smoothbrain/internal/plugin"
 	"github.com/google/uuid"
 )
 

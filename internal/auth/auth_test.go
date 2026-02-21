@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/dmarx/smoothbrain/internal/config"
+	"github.com/boozedog/smoothbrain/internal/config"
 	"github.com/go-webauthn/webauthn/webauthn"
 	_ "modernc.org/sqlite"
 )

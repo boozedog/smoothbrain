@@ -5,8 +5,8 @@ import (
 	"log/slog"
 	"sync"
 
-	"github.com/dmarx/smoothbrain/internal/plugin"
-	"github.com/dmarx/smoothbrain/internal/store"
+	"github.com/boozedog/smoothbrain/internal/plugin"
+	"github.com/boozedog/smoothbrain/internal/store"
 )
 
 type subscriber func(event plugin.Event)
