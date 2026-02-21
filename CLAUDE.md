@@ -27,7 +27,7 @@ internal/
     obsidian/                    Vault indexing, note/link/log writing
     tailscale/                   Health check wrapper for tsnet
     td/                          td webhook source
-    twitter/                     Twitter/X plugin (unused?)
+    twitter/                     Twitter/X plugin (not registered in main.go)
     uptimekuma/                  Uptime Kuma webhook source
     webmd/                       URL-to-markdown fetcher
     xai/                         xAI/Grok LLM transform
@@ -50,6 +50,18 @@ just dev            # air (hot reload)
 - **air** watches `.go` and `.templ` files, runs `templ generate` before build
 - **templ** generates `*_templ.go` from `.templ` files — do not edit generated files
 - **vendored**: dependencies are in `vendor/`. Run `go mod vendor` after changing `go.mod`
+
+Additional justfile targets: `fmt` (gofumpt), `lint` (golangci-lint), `vuln` (govulncheck), `release` (goreleaser), `vendor-web` (downloads franken-ui + htmx).
+
+## Toolchain
+
+Tool versions are managed by [mise](https://mise.jdx.dev/) via `.mise.toml`:
+
+- **gofumpt** — formatter (stricter than gofmt)
+- **golangci-lint** — linter
+- **govulncheck** — vulnerability scanner
+- **goreleaser** — release builds
+- **just** — task runner
 
 ## Config
 
@@ -101,10 +113,13 @@ WebAuthn/passkey auth. Configured via `"auth"` config block:
 
 ## Hooks
 
-`hk.pkl` runs trivy scans (vuln, secret, misconfig) on pre-push.
+`hk.pkl` defines git hooks:
+
+- **pre-commit**: `gofumpt` (formatting check) + `golangci-lint`
+- **pre-push**: trivy scans (vuln, secret, misconfig) + `golangci-lint` + `govulncheck`
 
 ## Key conventions
 
-- No test files exist for most packages — `auth/` has some tests
+- Tests exist for most packages — run `go test ./...` or `just lint`
 - slog for all logging
 - Plugin names are lowercase, hyphenated in config, directory names in code
