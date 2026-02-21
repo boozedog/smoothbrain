@@ -149,7 +149,10 @@ func (p *Plugin) read(_ context.Context, event plugin.Event, params map[string]a
 		path += ".md"
 	}
 
-	absPath := filepath.Join(p.cfg.VaultPath, path)
+	absPath := filepath.Clean(filepath.Join(p.cfg.VaultPath, path))
+	if !strings.HasPrefix(absPath, filepath.Clean(p.cfg.VaultPath)+string(filepath.Separator)) {
+		return event, fmt.Errorf("obsidian read: path escapes vault")
+	}
 	data, err := os.ReadFile(absPath)
 	if err != nil {
 		return event, fmt.Errorf("obsidian read: %w", err)
@@ -171,7 +174,10 @@ func (p *Plugin) query(_ context.Context, event plugin.Event, params map[string]
 		return event, fmt.Errorf("obsidian query: missing dir param")
 	}
 
-	searchDir := filepath.Join(p.cfg.VaultPath, dir)
+	searchDir := filepath.Clean(filepath.Join(p.cfg.VaultPath, dir))
+	if !strings.HasPrefix(searchDir, filepath.Clean(p.cfg.VaultPath)+string(filepath.Separator)) {
+		return event, fmt.Errorf("obsidian query: dir escapes vault")
+	}
 	var matches []string
 
 	err := filepath.WalkDir(searchDir, func(path string, d os.DirEntry, err error) error {

@@ -77,17 +77,21 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 	if agg.Status == plugin.StatusError {
 		w.WriteHeader(http.StatusServiceUnavailable)
 	}
-	json.NewEncoder(w).Encode(map[string]any{
+	if err := json.NewEncoder(w).Encode(map[string]any{
 		"status":  agg.Status,
 		"message": agg.Message,
 		"plugins": results,
-	})
+	}); err != nil {
+		s.log.Error("failed to encode health response", "error", err)
+	}
 }
 
 func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
 	events := queryEvents(s.store, s.log)
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(events)
+	if err := json.NewEncoder(w).Encode(events); err != nil {
+		s.log.Error("failed to encode events response", "error", err)
+	}
 }
 
 func (s *Server) handleEventsHTML(w http.ResponseWriter, r *http.Request) {
@@ -101,7 +105,9 @@ func (s *Server) handleEventRuns(w http.ResponseWriter, r *http.Request) {
 	eventID := r.PathValue("id")
 	runs := queryPipelineRuns(s.store, s.log, eventID)
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(runs)
+	if err := json.NewEncoder(w).Encode(runs); err != nil {
+		s.log.Error("failed to encode event runs response", "error", err)
+	}
 }
 
 func (s *Server) handleHealthHTML(w http.ResponseWriter, r *http.Request) {

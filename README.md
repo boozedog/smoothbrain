@@ -2,64 +2,93 @@
 
 Personal infrastructure orchestrator. Routes events between services, runs automations, and has an LLM intelligence layer. Built as a single Go binary with compiled-in plugins.
 
-**MVP pipeline:** Uptime Kuma alert → xAI summarize → Mattermost notification
-
 ## Architecture
 
 ```
-webhook POST /hooks/uptime-kuma
-    → event bus
-    → router (matches source + event type to routes)
-    → transform pipeline (xAI summarize)
-    → sink (Mattermost post)
-    → logged to SQLite
+webhook POST /hooks/{plugin}
+    -> event bus
+    -> router (matches source + event type to routes)
+    -> transform pipeline (LLM summarize, URL fetch, etc.)
+    -> sink (Mattermost post, Obsidian note, etc.)
+    -> logged to SQLite
 ```
 
-- **Event bus** — in-process pub/sub
+- **Event bus** — in-process pub/sub with SQLite persistence
 - **Plugins** — sources (emit events), transforms (enrich), sinks (deliver)
-- **Routes** — configurable pipelines: source → transforms → sink
-- **Web UI** — embedded HTML + htmx at `/`
+- **Routes** — configurable pipelines: source -> transforms -> sink
+- **Supervisor** — scheduled tasks on cron expressions
+- **Web UI** — embedded HTML + htmx + franken-ui at `/`, live updates via WebSocket
+- **Auth** — WebAuthn/passkey authentication
+
+### Plugins
+
+| Plugin | Type | Description |
+|---|---|---|
+| uptime-kuma | source | Webhook receiver for Uptime Kuma alerts |
+| td | source | Webhook receiver for td task events |
+| mattermost | source + sink | Chat commands via WebSocket, posts responses |
+| xai | transform | xAI/Grok LLM summarization and processing |
+| webmd | transform | Fetches URLs and converts to markdown |
+| claudecode | transform | Runs Claude Code CLI queries |
+| obsidian | transform + sink | Vault indexing, note/link/log writing |
+| tailscale | health | Health check wrapper for embedded tsnet node |
 
 ## Local development
 
-Requires Go 1.25+.
+Requires Go 1.25+ and [templ](https://templ.guide/).
 
 ### Build and run
 
 ```sh
+just build    # templ generate + go build
+just dev      # hot reload via air
+```
+
+Or manually:
+
+```sh
+templ generate
 go run ./cmd/smoothbrain -config examples/dev.json
 ```
 
-Or build a binary:
+### Environment
+
+Copy `example.env` to `.env` and fill in values. mise loads `.env` automatically.
 
 ```sh
-go build -o smoothbrain ./cmd/smoothbrain
-./smoothbrain -config examples/dev.json
+cp example.env .env
 ```
 
-### Minimal dev config
+### Config
 
-Create `examples/dev.json` for local testing without external services:
+Config is JSON with `$VAR` environment variable expansion. See `examples/dev.json` for a working dev config.
+
+Key sections:
 
 ```json
 {
   "http": {"address": "127.0.0.1:8080"},
   "database": "smoothbrain.db",
+  "auth": {
+    "rp_display_name": "smoothbrain",
+    "rp_id": "smoothbrain.tail9fdd65.ts.net",
+    "rp_origins": ["https://smoothbrain.tail9fdd65.ts.net"]
+  },
+  "tailscale": {"enabled": true, "auth_key": "$TS_AUTHKEY"},
   "plugins": {
-    "uptime-kuma": {},
-    "xai": {"model": "grok-3"},
-    "mattermost": {"url": "http://localhost"}
+    "xai": {"model": "grok-4-1-fast-non-reasoning", "api_key": "$XAI_API_KEY"},
+    "mattermost": {"url": "$MATTERMOST_URL", "token": "$MATTERMOST_TOKEN", "listen": true}
   },
   "routes": [],
   "supervisor": {"tasks": []}
 }
 ```
 
-This starts the server with all plugins registered but no routes wired, so you can test the webhook ingestion and web UI without needing API keys.
+### Tailscale / tsnet
+
+smoothbrain embeds a Tailscale node via tsnet. When `"tailscale": {"enabled": true}`, both a local HTTP server and a tsnet HTTPS listener run simultaneously. Set `TS_AUTHKEY` or `"auth_key"` in config. On first run without an auth key, tsnet prints a login URL to stderr.
 
 ### Test it
-
-With the server running:
 
 ```sh
 # Health check
@@ -70,7 +99,7 @@ curl -X POST http://127.0.0.1:8080/hooks/uptime-kuma \
   -H "Content-Type: application/json" \
   -d '{"monitor":{"name":"My Service","url":"https://example.com"},"heartbeat":{"status":0,"msg":"Connection refused"}}'
 
-# View events (JSON)
+# View events
 curl http://127.0.0.1:8080/api/events
 
 # Web UI
@@ -80,41 +109,32 @@ open http://127.0.0.1:8080
 Or use the test script:
 
 ```sh
-./examples/test-webhook.sh           # defaults to 127.0.0.1:8080
-./examples/test-webhook.sh localhost:9090  # custom address
-```
-
-### Full pipeline (with real services)
-
-To test the full uptime-kuma → xai → mattermost route, create secret files and use the example config:
-
-```sh
-echo "xai-sk-your-key-here" > /tmp/xai-key
-echo "your-mattermost-token" > /tmp/mm-token
-```
-
-Edit `examples/config.json` to point `api_key_file` and `token_file` at those paths, set the Mattermost URL and channel ID, then:
-
-```sh
-go run ./cmd/smoothbrain -config examples/config.json
+./examples/test-webhook.sh
 ```
 
 ## API
 
 | Endpoint | Method | Description |
 |---|---|---|
-| `/api/health` | GET | Health check |
+| `/` | GET | Web UI |
+| `/api/health` | GET | Health check (all plugins) |
+| `/api/health/html` | GET | Health status HTML fragment |
 | `/api/events` | GET | Recent events (JSON) |
-| `/api/events/html` | GET | Recent events (HTML fragment, used by htmx) |
-| `/hooks/uptime-kuma` | POST | Uptime Kuma webhook receiver |
+| `/api/events/html` | GET | Recent events (HTML fragment) |
+| `/api/events/{id}/runs` | GET | Pipeline runs for an event |
+| `/api/status/html` | GET | Status HTML fragment |
+| `/api/log/html` | GET | Recent log entries (HTML fragment) |
+| `/hooks/uptime-kuma` | POST | Uptime Kuma webhook |
+| `/hooks/td` | POST | td webhook |
 
 ## Deployment (NixOS)
+
+> Note: The NixOS module exists but may not reflect the latest config changes.
 
 ```nix
 {
   inputs.smoothbrain.url = "github:dmarx/smoothbrain";
 
-  # In your NixOS config:
   imports = [ smoothbrain.nixosModules.default ];
 
   services.smoothbrain = {
@@ -132,20 +152,6 @@ go run ./cmd/smoothbrain -config examples/config.json
         tokenFile = config.sops.secrets.mattermost-token.path;
       };
     };
-    routes = [{
-      name = "uptime-kuma-alerts";
-      source = "uptime-kuma";
-      event = "alert";
-      pipeline = [{
-        plugin = "xai";
-        action = "summarize";
-        params.prompt = "Summarize this alert concisely.";
-      }];
-      sink = {
-        plugin = "mattermost";
-        params.channel = "your-channel-id";
-      };
-    }];
   };
 }
 ```
@@ -156,19 +162,29 @@ go run ./cmd/smoothbrain -config examples/config.json
 cmd/smoothbrain/main.go          Entry point
 internal/
   config/config.go               Config structs + JSON loader
+  auth/                          WebAuthn/passkey authentication
   core/
-    bus.go                        Event bus (in-process pub/sub)
-    router.go                     Route matching + pipeline execution
-    server.go                     HTTP server + embedded web UI
-  store/store.go                  SQLite (WAL mode, schema migration)
+    bus.go                       Event bus (in-process pub/sub)
+    hub.go                       WebSocket hub (live UI updates)
+    router.go                    Route matching + pipeline execution
+    server.go                    HTTP server + embedded web UI
+    supervisor.go                Scheduled task runner
+    logbuf.go                    Log ring buffer
+  store/store.go                 SQLite (WAL mode, schema migration)
   plugin/
-    plugin.go                     Plugin/Sink/Transform interfaces
-    registry.go                   Plugin lifecycle management
-    uptimekuma/uptimekuma.go      Webhook source
-    xai/xai.go                    LLM transform
-    mattermost/mattermost.go      Chat sink
+    plugin.go                    Plugin interfaces
+    registry.go                  Plugin lifecycle management
+    claudecode/                  Claude Code CLI
+    mattermost/                  Chat source + sink
+    obsidian/                    Obsidian vault integration
+    tailscale/                   tsnet health wrapper
+    td/                          td webhook source
+    uptimekuma/                  Uptime Kuma webhook source
+    webmd/                       URL-to-markdown
+    xai/                         xAI/Grok LLM
 nix/module.nix                   NixOS module
 examples/
+  dev.json                       Dev config
   config.json                    Full example config
   test-webhook.sh                Test script
 ```

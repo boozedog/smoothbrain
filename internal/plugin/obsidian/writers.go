@@ -120,7 +120,10 @@ func (p *Plugin) writeLog(_ context.Context, event plugin.Event, _ map[string]an
 	}
 
 	absPath := matches[0]
-	relPath, _ := filepath.Rel(p.cfg.VaultPath, absPath)
+	relPath, err := filepath.Rel(p.cfg.VaultPath, absPath)
+	if err != nil {
+		return event, fmt.Errorf("obsidian write_log: resolve relative path: %w", err)
+	}
 
 	content, err := os.ReadFile(absPath)
 	if err != nil {

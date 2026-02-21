@@ -144,20 +144,20 @@ func (a *Auth) loadCredentials() []webauthn.Credential {
 }
 
 // BeginRegistration starts a WebAuthn registration ceremony.
-func (a *Auth) BeginRegistration() (*protocol.CredentialCreation, error) {
+func (a *Auth) BeginRegistration() (*protocol.CredentialCreation, string, error) {
 	user := &User{credentials: nil}
 	creation, session, err := a.wa.BeginRegistration(user)
 	if err != nil {
-		return nil, fmt.Errorf("auth: begin registration: %w", err)
+		return nil, "", fmt.Errorf("auth: begin registration: %w", err)
 	}
-	a.storeChallenge("registration", session)
-	return creation, nil
+	challengeID := a.storeChallenge(session)
+	return creation, challengeID, nil
 }
 
 // FinishRegistration completes a WebAuthn registration ceremony and stores
 // the new credential in the database.
-func (a *Auth) FinishRegistration(r *http.Request) error {
-	session, ok := a.getChallenge("registration")
+func (a *Auth) FinishRegistration(challengeID string, r *http.Request) error {
+	session, ok := a.getChallenge(challengeID)
 	if !ok {
 		return fmt.Errorf("auth: no registration challenge found")
 	}
@@ -180,25 +180,25 @@ func (a *Auth) FinishRegistration(r *http.Request) error {
 }
 
 // BeginLogin starts a WebAuthn login ceremony.
-func (a *Auth) BeginLogin() (*protocol.CredentialAssertion, error) {
+func (a *Auth) BeginLogin() (*protocol.CredentialAssertion, string, error) {
 	creds := a.loadCredentials()
 	if len(creds) == 0 {
-		return nil, fmt.Errorf("auth: no credentials registered")
+		return nil, "", fmt.Errorf("auth: no credentials registered")
 	}
 
 	user := &User{credentials: creds}
 	assertion, session, err := a.wa.BeginLogin(user)
 	if err != nil {
-		return nil, fmt.Errorf("auth: begin login: %w", err)
+		return nil, "", fmt.Errorf("auth: begin login: %w", err)
 	}
-	a.storeChallenge("login", session)
-	return assertion, nil
+	challengeID := a.storeChallenge(session)
+	return assertion, challengeID, nil
 }
 
 // FinishLogin completes a WebAuthn login ceremony and returns a new session
 // token.
-func (a *Auth) FinishLogin(r *http.Request) (string, error) {
-	session, ok := a.getChallenge("login")
+func (a *Auth) FinishLogin(challengeID string, r *http.Request) (string, error) {
+	session, ok := a.getChallenge(challengeID)
 	if !ok {
 		return "", fmt.Errorf("auth: no login challenge found")
 	}
@@ -276,16 +276,23 @@ func (a *Auth) StartCleanup(ctx context.Context) {
 	}()
 }
 
-func (a *Auth) storeChallenge(key string, data *webauthn.SessionData) {
+func (a *Auth) storeChallenge(data *webauthn.SessionData) string {
+	id := make([]byte, 16)
+	if _, err := rand.Read(id); err != nil {
+		panic("crypto/rand failed: " + err.Error())
+	}
+	challengeID := hex.EncodeToString(id)
+
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	a.challenges[key] = challengeEntry{
+	a.challenges[challengeID] = challengeEntry{
 		data:      data,
 		expiresAt: time.Now().Add(60 * time.Second),
 	}
+	return challengeID
 }
 
-func (a *Auth) getChallenge(key string) (*webauthn.SessionData, bool) {
+func (a *Auth) getChallenge(challengeID string) (*webauthn.SessionData, bool) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 
@@ -297,10 +304,10 @@ func (a *Auth) getChallenge(key string) (*webauthn.SessionData, bool) {
 		}
 	}
 
-	entry, ok := a.challenges[key]
+	entry, ok := a.challenges[challengeID]
 	if !ok {
 		return nil, false
 	}
-	delete(a.challenges, key)
+	delete(a.challenges, challengeID)
 	return entry.data, true
 }

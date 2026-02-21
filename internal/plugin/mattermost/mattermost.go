@@ -46,7 +46,7 @@ type Plugin struct {
 
 func New(log *slog.Logger) *Plugin {
 	return &Plugin{
-		client: &http.Client{},
+		client: &http.Client{Timeout: 30 * time.Second},
 		log:    log,
 	}
 }
@@ -383,7 +383,7 @@ func (p *Plugin) sendPost(channelID, rootID, text string) error {
 		return err
 	}
 
-	req, err := http.NewRequest("POST", u, bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(context.Background(), "POST", u, bytes.NewReader(body))
 	if err != nil {
 		return err
 	}
@@ -419,7 +419,7 @@ func (p *Plugin) addReaction(postID, emojiName string) error {
 		return err
 	}
 
-	req, err := http.NewRequest("POST", u, bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(context.Background(), "POST", u, bytes.NewReader(body))
 	if err != nil {
 		return err
 	}
@@ -446,7 +446,7 @@ func (p *Plugin) removeReaction(postID, emojiName string) error {
 		return err
 	}
 
-	req, err := http.NewRequest("DELETE", u, nil)
+	req, err := http.NewRequestWithContext(context.Background(), "DELETE", u, nil)
 	if err != nil {
 		return err
 	}
@@ -546,13 +546,19 @@ func (p *Plugin) HandleEvent(ctx context.Context, event plugin.Event) error {
 func (p *Plugin) uploadFile(ctx context.Context, channelID, filename string, content []byte) (string, error) {
 	var buf bytes.Buffer
 	w := multipart.NewWriter(&buf)
-	w.WriteField("channel_id", channelID)
+	if err := w.WriteField("channel_id", channelID); err != nil {
+		return "", fmt.Errorf("write channel_id field: %w", err)
+	}
 	part, err := w.CreateFormFile("files", filename)
 	if err != nil {
 		return "", fmt.Errorf("create form file: %w", err)
 	}
-	part.Write(content)
-	w.Close()
+	if _, err := part.Write(content); err != nil {
+		return "", fmt.Errorf("write file content: %w", err)
+	}
+	if err := w.Close(); err != nil {
+		return "", fmt.Errorf("close multipart writer: %w", err)
+	}
 
 	uploadURL, err := url.JoinPath(p.cfg.URL, "/api/v4/files")
 	if err != nil {

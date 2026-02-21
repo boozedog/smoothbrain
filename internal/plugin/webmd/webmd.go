@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 
 	"github.com/dmarx/smoothbrain/internal/plugin"
 )
@@ -27,7 +28,7 @@ type Plugin struct {
 
 func New(log *slog.Logger) *Plugin {
 	return &Plugin{
-		client: &http.Client{},
+		client: &http.Client{Timeout: 60 * time.Second},
 		log:    log,
 	}
 }

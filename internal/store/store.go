@@ -63,6 +63,11 @@ func Open(path string) (*Store, error) {
 		return nil, fmt.Errorf("setting WAL mode: %w", err)
 	}
 
+	if _, err := db.Exec("PRAGMA busy_timeout = 5000"); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("setting busy timeout: %w", err)
+	}
+
 	if _, err := db.Exec(schema); err != nil {
 		db.Close()
 		return nil, fmt.Errorf("running migrations: %w", err)
