@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/dmarx/smoothbrain/internal/config"
+	"github.com/go-webauthn/webauthn/webauthn"
 	_ "modernc.org/sqlite"
 )
 
@@ -92,6 +93,87 @@ func TestValidateSessionNonexistent(t *testing.T) {
 
 	if a.ValidateSession("does-not-exist") {
 		t.Error("nonexistent token should not validate")
+	}
+}
+
+func TestStoreChallengeAndRetrieve(t *testing.T) {
+	a := newTestAuth(t, 24*time.Hour)
+
+	sd := &webauthn.SessionData{Challenge: "test-challenge-abc"}
+	a.storeChallenge("testkey", sd)
+
+	got, ok := a.getChallenge("testkey")
+	if !ok {
+		t.Fatal("expected challenge to be present")
+	}
+	if got.Challenge != "test-challenge-abc" {
+		t.Errorf("challenge mismatch: got %q, want %q", got.Challenge, "test-challenge-abc")
+	}
+}
+
+func TestChallengeSingleUse(t *testing.T) {
+	a := newTestAuth(t, 24*time.Hour)
+
+	sd := &webauthn.SessionData{Challenge: "one-time"}
+	a.storeChallenge("once", sd)
+
+	// First retrieval should succeed.
+	if _, ok := a.getChallenge("once"); !ok {
+		t.Fatal("first retrieval should succeed")
+	}
+
+	// Second retrieval should fail (challenge was consumed).
+	if _, ok := a.getChallenge("once"); ok {
+		t.Error("second retrieval should fail; challenge is single-use")
+	}
+}
+
+func TestChallengeExpiry(t *testing.T) {
+	a := newTestAuth(t, 24*time.Hour)
+
+	sd := &webauthn.SessionData{Challenge: "will-expire"}
+	a.storeChallenge("expiring", sd)
+
+	// Manually set expiry to the past to simulate TTL elapsing.
+	a.mu.Lock()
+	entry := a.challenges["expiring"]
+	entry.expiresAt = time.Now().Add(-1 * time.Second)
+	a.challenges["expiring"] = entry
+	a.mu.Unlock()
+
+	if _, ok := a.getChallenge("expiring"); ok {
+		t.Error("expired challenge should not be retrievable")
+	}
+}
+
+func TestChallengeCleanupRemovesExpired(t *testing.T) {
+	a := newTestAuth(t, 24*time.Hour)
+
+	// Store two challenges.
+	a.storeChallenge("fresh", &webauthn.SessionData{Challenge: "fresh"})
+	a.storeChallenge("stale", &webauthn.SessionData{Challenge: "stale"})
+
+	// Expire only the stale one.
+	a.mu.Lock()
+	entry := a.challenges["stale"]
+	entry.expiresAt = time.Now().Add(-1 * time.Second)
+	a.challenges["stale"] = entry
+	a.mu.Unlock()
+
+	// Calling getChallenge triggers cleanup of expired entries.
+	// Retrieve a non-existent key just to trigger cleanup.
+	a.getChallenge("nonexistent")
+
+	a.mu.Lock()
+	_, staleExists := a.challenges["stale"]
+	_, freshExists := a.challenges["fresh"]
+	a.mu.Unlock()
+
+	if staleExists {
+		t.Error("expired 'stale' challenge should have been cleaned up")
+	}
+	if !freshExists {
+		t.Error("non-expired 'fresh' challenge should still exist")
 	}
 }
 

@@ -14,6 +14,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/dmarx/smoothbrain/internal/plugin"
@@ -31,10 +32,16 @@ type Plugin struct {
 	cfg Config
 	log *slog.Logger
 	bus plugin.EventBus
+
+	nonceMu sync.Mutex
+	nonces  map[string]time.Time // signature -> time seen
 }
 
 func New(log *slog.Logger) *Plugin {
-	return &Plugin{log: log}
+	return &Plugin{
+		log:    log,
+		nonces: make(map[string]time.Time),
+	}
 }
 
 func (p *Plugin) Name() string { return "td" }
@@ -83,6 +90,10 @@ func (p *Plugin) handleWebhook(w http.ResponseWriter, r *http.Request) {
 		}
 		if !isTimestampFresh(ts, 5*time.Minute) {
 			http.Error(w, "unauthorized: timestamp too old", http.StatusUnauthorized)
+			return
+		}
+		if p.isReplayedNonce(sig) {
+			http.Error(w, "unauthorized: replayed request", http.StatusUnauthorized)
 			return
 		}
 	}
@@ -157,6 +168,30 @@ func isTimestampFresh(ts string, maxAge time.Duration) bool {
 		diff = -diff
 	}
 	return diff <= maxAge
+}
+
+const nonceWindow = 5*time.Minute + 30*time.Second
+
+// isReplayedNonce returns true if the signature was already seen within the
+// replay window. It evicts expired entries on each call.
+func (p *Plugin) isReplayedNonce(sig string) bool {
+	now := time.Now()
+
+	p.nonceMu.Lock()
+	defer p.nonceMu.Unlock()
+
+	// Evict expired nonces.
+	for k, seen := range p.nonces {
+		if now.Sub(seen) > nonceWindow {
+			delete(p.nonces, k)
+		}
+	}
+
+	if _, exists := p.nonces[sig]; exists {
+		return true
+	}
+	p.nonces[sig] = now
+	return false
 }
 
 type webhookPayload struct {

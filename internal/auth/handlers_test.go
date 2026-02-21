@@ -70,6 +70,20 @@ func TestLogoutCSRFRefererFallback(t *testing.T) {
 	}
 }
 
+func TestLogoutCSRFPrefixAttack(t *testing.T) {
+	a := newTestAuth(t, 24*time.Hour)
+
+	req := httptest.NewRequest("POST", "/auth/logout", nil)
+	req.Header.Set("Origin", "http://localhost:8080.evil.com")
+	rec := httptest.NewRecorder()
+
+	a.handleLogout(rec, req)
+
+	if rec.Code != http.StatusForbidden {
+		t.Errorf("crafted origin prefix should be forbidden, got %d", rec.Code)
+	}
+}
+
 func TestLogoutDeletesSession(t *testing.T) {
 	a := newTestAuth(t, 24*time.Hour)
 

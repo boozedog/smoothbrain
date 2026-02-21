@@ -3,6 +3,7 @@ package auth
 import (
 	"encoding/json"
 	"net/http"
+	"slices"
 	"strings"
 )
 
@@ -99,16 +100,16 @@ func (a *Auth) handleLoginFinish(w http.ResponseWriter, r *http.Request) {
 // isValidOrigin checks if the request origin matches any configured RP origin.
 func isValidOrigin(r *http.Request, allowedOrigins []string) bool {
 	origin := r.Header.Get("Origin")
-	if origin == "" {
-		// Fall back to Referer header.
-		ref := r.Header.Get("Referer")
-		if ref == "" {
-			return false
-		}
-		origin = ref
+	if origin != "" {
+		return slices.Contains(allowedOrigins, origin)
+	}
+	// Fall back to Referer header (includes path, so use prefix matching).
+	ref := r.Header.Get("Referer")
+	if ref == "" {
+		return false
 	}
 	for _, allowed := range allowedOrigins {
-		if strings.HasPrefix(origin, allowed) {
+		if strings.HasPrefix(ref, allowed) {
 			return true
 		}
 	}
