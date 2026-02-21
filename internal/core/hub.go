@@ -68,7 +68,10 @@ func (h *Hub) broadcast() {
 	views := toEventViews(events, h.store, h.log)
 
 	var buf bytes.Buffer
-	EventsWrapper(views).Render(context.Background(), &buf)
+	if err := EventsWrapper(views).Render(context.Background(), &buf); err != nil {
+		h.log.Error("render events wrapper", "error", err)
+		return
+	}
 	msg := buf.Bytes()
 
 	h.mu.Lock()
@@ -111,7 +114,14 @@ func (h *Hub) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	events := queryEvents(h.store, h.log)
 	views := toEventViews(events, h.store, h.log)
 	var buf bytes.Buffer
-	EventsWrapper(views).Render(ctx, &buf)
+	if err := EventsWrapper(views).Render(ctx, &buf); err != nil {
+		h.log.Error("render events wrapper", "error", err)
+		h.mu.Lock()
+		delete(h.clients, c)
+		h.mu.Unlock()
+		cancel()
+		return
+	}
 	if err := conn.Write(ctx, websocket.MessageText, buf.Bytes()); err != nil {
 		h.log.Debug("ws initial push failed", "error", err)
 		h.mu.Lock()

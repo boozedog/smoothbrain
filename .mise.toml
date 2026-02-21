@@ -1,5 +1,9 @@
 [tools]
 just = "latest"
+golangci-lint = "latest"
+gofumpt = "latest"
+"go:golang.org/x/vuln/cmd/govulncheck" = "latest"
+goreleaser = "latest"
 
 [env]
 _.file = ".env"

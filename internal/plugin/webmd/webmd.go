@@ -85,11 +85,11 @@ func (p *Plugin) fetch(ctx context.Context, event plugin.Event) (plugin.Event, e
 		return event, fmt.Errorf("webmd: build request: %w", err)
 	}
 
-	resp, err := p.client.Do(req)
+	resp, err := p.client.Do(req) //nolint:gosec // URL is user-provided by design (URL-to-markdown fetcher)
 	if err != nil {
 		return event, fmt.Errorf("webmd: fetch: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)

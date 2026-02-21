@@ -17,7 +17,7 @@ func newTestAuth(t *testing.T, sessionDuration time.Duration) *Auth {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { db.Close() })
+	t.Cleanup(func() { _ = db.Close() })
 
 	cfg := config.AuthConfig{
 		RPDisplayName:   "Test",

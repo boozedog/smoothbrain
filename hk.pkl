@@ -14,10 +14,33 @@ local linters = new Mapping<String, Step> {
 }
 
 hooks {
+    ["pre-commit"] {
+        steps {
+            ["fmt"] {
+                check = "gofumpt -l -extra . | diff /dev/null -"
+            }
+        }
+    }
     ["pre-push"] {
-        steps = linters
+        steps {
+            ...linters
+            ["lint"] {
+                check = "golangci-lint run ./..."
+            }
+            ["vuln"] {
+                check = "govulncheck ./..."
+            }
+        }
     }
     ["check"] {
-        steps = linters
+        steps {
+            ...linters
+            ["lint"] {
+                check = "golangci-lint run ./..."
+            }
+            ["vuln"] {
+                check = "govulncheck ./..."
+            }
+        }
     }
 }

@@ -7,4 +7,5 @@ tmp/
 *.db-shm
 data/
 result
+dist/
 .env

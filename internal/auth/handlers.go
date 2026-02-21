@@ -24,7 +24,9 @@ func (a *Auth) handleLoginPage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Content-Type", "text/html")
-	LoginPage().Render(r.Context(), w)
+	if err := LoginPage().Render(r.Context(), w); err != nil {
+		a.log.Error("auth: render login page", "error", err)
+	}
 }
 
 func (a *Auth) handleRegisterPage(w http.ResponseWriter, r *http.Request) {
@@ -33,7 +35,9 @@ func (a *Auth) handleRegisterPage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Content-Type", "text/html")
-	RegisterPage().Render(r.Context(), w)
+	if err := RegisterPage().Render(r.Context(), w); err != nil {
+		a.log.Error("auth: render register page", "error", err)
+	}
 }
 
 func (a *Auth) handleRegisterBegin(w http.ResponseWriter, r *http.Request) {
@@ -45,7 +49,9 @@ func (a *Auth) handleRegisterBegin(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("X-Challenge-ID", challengeID)
-	json.NewEncoder(w).Encode(creation)
+	if err := json.NewEncoder(w).Encode(creation); err != nil {
+		a.log.Error("auth: encode response", "error", err)
+	}
 }
 
 func (a *Auth) handleRegisterFinish(w http.ResponseWriter, r *http.Request) {
@@ -60,7 +66,9 @@ func (a *Auth) handleRegisterFinish(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]bool{"ok": true})
+	if err := json.NewEncoder(w).Encode(map[string]bool{"ok": true}); err != nil {
+		a.log.Error("auth: encode response", "error", err)
+	}
 }
 
 func (a *Auth) handleLoginBegin(w http.ResponseWriter, r *http.Request) {
@@ -72,7 +80,9 @@ func (a *Auth) handleLoginBegin(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("X-Challenge-ID", challengeID)
-	json.NewEncoder(w).Encode(assertion)
+	if err := json.NewEncoder(w).Encode(assertion); err != nil {
+		a.log.Error("auth: encode response", "error", err)
+	}
 }
 
 func (a *Auth) handleLoginFinish(w http.ResponseWriter, r *http.Request) {
@@ -106,7 +116,9 @@ func (a *Auth) handleLoginFinish(w http.ResponseWriter, r *http.Request) {
 	})
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]bool{"ok": true})
+	if err := json.NewEncoder(w).Encode(map[string]bool{"ok": true}); err != nil {
+		a.log.Error("auth: encode response", "error", err)
+	}
 }
 
 // isValidOrigin checks if the request origin matches any configured RP origin.

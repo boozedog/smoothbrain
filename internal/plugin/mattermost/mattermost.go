@@ -109,7 +109,7 @@ func (p *Plugin) HealthCheck(ctx context.Context) plugin.HealthStatus {
 		if err != nil {
 			return plugin.HealthStatus{Status: plugin.StatusError, Message: "ping failed: " + err.Error()}
 		}
-		resp.Body.Close()
+		_ = resp.Body.Close()
 		if resp.StatusCode != http.StatusOK {
 			return plugin.HealthStatus{Status: plugin.StatusError, Message: fmt.Sprintf("ping returned %d", resp.StatusCode)}
 		}
@@ -138,7 +138,7 @@ func (p *Plugin) fetchBotUser(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
@@ -199,7 +199,7 @@ func (p *Plugin) connectAndListen(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("dial: %w", err)
 	}
-	defer conn.CloseNow()
+	defer conn.CloseNow() //nolint:errcheck // best-effort cleanup on exit
 
 	// Authenticate via the WebSocket auth challenge.
 	authMsg, _ := json.Marshal(map[string]any{
@@ -394,7 +394,7 @@ func (p *Plugin) sendPost(channelID, rootID, text string) error {
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusCreated {
 		respBody, _ := io.ReadAll(resp.Body)
@@ -430,7 +430,7 @@ func (p *Plugin) addReaction(postID, emojiName string) error {
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		respBody, _ := io.ReadAll(resp.Body)
@@ -456,7 +456,7 @@ func (p *Plugin) removeReaction(postID, emojiName string) error {
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		respBody, _ := io.ReadAll(resp.Body)
@@ -523,7 +523,7 @@ func (p *Plugin) HandleEvent(ctx context.Context, event plugin.Event) error {
 	if err != nil {
 		return fmt.Errorf("mattermost api call: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusCreated {
 		respBody, _ := io.ReadAll(resp.Body)
@@ -576,7 +576,7 @@ func (p *Plugin) uploadFile(ctx context.Context, channelID, filename string, con
 	if err != nil {
 		return "", fmt.Errorf("upload: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusCreated {
 		respBody, _ := io.ReadAll(resp.Body)

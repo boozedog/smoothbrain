@@ -115,7 +115,7 @@ func (a *Auth) loadCredentials() []webauthn.Credential {
 		a.log.Error("auth: load credentials", "error", err)
 		return nil
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var creds []webauthn.Credential
 	for rows.Next() {

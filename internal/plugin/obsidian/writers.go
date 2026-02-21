@@ -23,7 +23,7 @@ func (p *Plugin) ensureDailyNote(t time.Time) (string, error) {
 		return relPath, nil
 	}
 
-	if err := os.MkdirAll(filepath.Dir(absPath), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(absPath), 0o750); err != nil {
 		return "", fmt.Errorf("obsidian: mkdir daily: %w", err)
 	}
 
@@ -264,13 +264,13 @@ func atomicWrite(path, content string) error {
 	tmpPath := tmp.Name()
 
 	if _, err := tmp.WriteString(content); err != nil {
-		tmp.Close()
-		os.Remove(tmpPath)
+		_ = tmp.Close()
+		_ = os.Remove(tmpPath)
 		return err
 	}
 	if err := tmp.Close(); err != nil {
-		os.Remove(tmpPath)
+		_ = os.Remove(tmpPath)
 		return err
 	}
-	return os.Rename(tmpPath, path)
+	return os.Rename(tmpPath, path) //nolint:gosec // paths are constructed from validated vault-relative paths
 }

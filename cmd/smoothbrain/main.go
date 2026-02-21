@@ -67,7 +67,7 @@ func main() {
 		log.Error("failed to open database", "error", err)
 		os.Exit(1)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	log.Info("database ready", "path", cfg.Database)
 
 	// Plugin registry
@@ -131,7 +131,7 @@ func main() {
 	srv := core.NewServer(db, log, hub, registry, cfg.Routes, logBuf)
 	registry.RegisterWebhooks(srv)
 
-	var handler http.Handler = srv.Handler()
+	handler := srv.Handler()
 	if cfg.Auth.RPID != "" {
 		a, err := auth.New(cfg.Auth, db.DB(), log)
 		if err != nil {
@@ -164,6 +164,7 @@ func main() {
 		}
 		go func() {
 			log.Info("tsnet service listening", "service", cfg.Tailscale.ServiceName, "hostname", cfg.Tailscale.Hostname)
+			//nolint:gosec // tsnet listener is internal; timeouts are set on the main HTTP server
 			if err := http.Serve(ln, handler); err != nil {
 				log.Error("tsnet serve error", "error", err)
 			}
@@ -196,9 +197,13 @@ func main() {
 		log.Info("shutting down")
 		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer shutdownCancel()
-		httpServer.Shutdown(shutdownCtx)
+		if err := httpServer.Shutdown(shutdownCtx); err != nil {
+			log.Error("http shutdown error", "error", err)
+		}
 		if tsServer != nil {
-			tsServer.Close()
+			if err := tsServer.Close(); err != nil {
+				log.Error("tsnet close error", "error", err)
+			}
 		}
 		cancel()
 	}()

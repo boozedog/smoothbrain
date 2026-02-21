@@ -18,10 +18,10 @@ func New(log *slog.Logger) *Plugin {
 	return &Plugin{log: log}
 }
 
-func (p *Plugin) Name() string                                    { return "tailscale" }
-func (p *Plugin) Init(_ json.RawMessage) error                    { return nil }
+func (p *Plugin) Name() string                                     { return "tailscale" }
+func (p *Plugin) Init(_ json.RawMessage) error                     { return nil }
 func (p *Plugin) Start(_ context.Context, _ plugin.EventBus) error { return nil }
-func (p *Plugin) Stop() error                                     { return nil }
+func (p *Plugin) Stop() error                                      { return nil }
 
 func (p *Plugin) SetServer(s *tsnet.Server) { p.server = s }
 

@@ -140,7 +140,7 @@ func (p *Plugin) fetch(ctx context.Context, bus plugin.EventBus, sinceID string)
 		}
 		req.Header.Set("Authorization", "Bearer "+p.bearerToken)
 
-		resp, err := p.client.Do(req)
+		resp, err := p.client.Do(req) //nolint:gosec // URL is constructed from config, not user input
 		if err != nil {
 			p.log.Error("twitter: api request", "error", err)
 			p.lastFetchOK.Store(false)
@@ -149,7 +149,7 @@ func (p *Plugin) fetch(ctx context.Context, bus plugin.EventBus, sinceID string)
 		}
 
 		body, _ := io.ReadAll(resp.Body)
-		resp.Body.Close()
+		_ = resp.Body.Close()
 
 		if resp.StatusCode != http.StatusOK {
 			p.log.Error("twitter: api error", "status", resp.StatusCode, "body", string(body))

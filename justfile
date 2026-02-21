@@ -7,6 +7,19 @@ build:
 dev:
     air
 
+fmt:
+    gofumpt -w -extra .
+    templ generate
+
+lint:
+    golangci-lint run ./...
+
+vuln:
+    govulncheck ./...
+
+release:
+    goreleaser build --snapshot --clean
+
 vendor-web:
     mkdir -p {{VENDOR_DIR}}/frankenui/js
     mkdir -p {{VENDOR_DIR}}/htmx
