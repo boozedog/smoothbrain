@@ -124,6 +124,7 @@ Or use the test script:
 | `/api/events/{id}/runs` | GET | Pipeline runs for an event |
 | `/api/status/html` | GET | Status HTML fragment |
 | `/api/log/html` | GET | Recent log entries (HTML fragment) |
+| `/ws` | GET | WebSocket for live UI updates |
 | `/hooks/uptime-kuma` | POST | Uptime Kuma webhook |
 | `/hooks/td` | POST | td webhook |
 
@@ -168,6 +169,7 @@ internal/
     hub.go                       WebSocket hub (live UI updates)
     router.go                    Route matching + pipeline execution
     server.go                    HTTP server + embedded web UI
+    web/                         Embedded web UI (franken-ui, htmx)
     supervisor.go                Scheduled task runner
     logbuf.go                    Log ring buffer
   store/store.go                 SQLite (WAL mode, schema migration)
