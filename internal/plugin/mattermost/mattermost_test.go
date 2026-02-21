@@ -322,7 +322,9 @@ func TestHandleEvent_Success(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if strings.HasSuffix(r.URL.Path, "/posts") {
 			body, _ := io.ReadAll(r.Body)
-			json.Unmarshal(body, &gotBody)
+			if err := json.Unmarshal(body, &gotBody); err != nil {
+				t.Fatal(err)
+			}
 			w.WriteHeader(http.StatusCreated)
 			return
 		}
@@ -355,7 +357,9 @@ func TestHandleEvent_ThreadReply(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if strings.HasSuffix(r.URL.Path, "/posts") {
 			body, _ := io.ReadAll(r.Body)
-			json.Unmarshal(body, &gotBody)
+			if err := json.Unmarshal(body, &gotBody); err != nil {
+				t.Fatal(err)
+			}
 			w.WriteHeader(http.StatusCreated)
 			return
 		}
@@ -392,7 +396,7 @@ func TestHandleEvent_ThreadReply(t *testing.T) {
 func TestHandleEvent_APIError(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
-		w.Write([]byte("server error"))
+		_, _ = w.Write([]byte("server error"))
 	}))
 	defer ts.Close()
 
@@ -422,7 +426,9 @@ func TestSendPost_Success(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotAuth = r.Header.Get("Authorization")
 		body, _ := io.ReadAll(r.Body)
-		json.Unmarshal(body, &gotBody)
+		if err := json.Unmarshal(body, &gotBody); err != nil {
+			t.Fatal(err)
+		}
 		w.WriteHeader(http.StatusCreated)
 	}))
 	defer ts.Close()
@@ -453,7 +459,9 @@ func TestSendPost_WithRootID(t *testing.T) {
 	var gotBody map[string]any
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		body, _ := io.ReadAll(r.Body)
-		json.Unmarshal(body, &gotBody)
+		if err := json.Unmarshal(body, &gotBody); err != nil {
+			t.Fatal(err)
+		}
 		w.WriteHeader(http.StatusCreated)
 	}))
 	defer ts.Close()
@@ -474,7 +482,7 @@ func TestSendPost_WithRootID(t *testing.T) {
 func TestSendPost_Error(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusBadRequest)
-		w.Write([]byte("bad request"))
+		_, _ = w.Write([]byte("bad request"))
 	}))
 	defer ts.Close()
 

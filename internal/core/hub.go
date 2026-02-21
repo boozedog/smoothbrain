@@ -8,9 +8,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/coder/websocket"
 	"github.com/boozedog/smoothbrain/internal/plugin"
 	"github.com/boozedog/smoothbrain/internal/store"
+	"github.com/coder/websocket"
 )
 
 type client struct {

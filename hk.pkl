@@ -19,6 +19,9 @@ hooks {
             ["fmt"] {
                 check = "gofumpt -l -extra . | diff /dev/null -"
             }
+            ["lint"] {
+                check = "golangci-lint run ./..."
+            }
         }
     }
     ["pre-push"] {

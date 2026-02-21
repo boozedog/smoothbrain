@@ -76,7 +76,7 @@ func TestWebmd_Fetch_AddScheme(t *testing.T) {
 	var gotURL string
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotURL = r.URL.Query().Get("url")
-		fmt.Fprint(w, "# OK")
+		_, _ = fmt.Fprint(w, "# OK")
 	}))
 	defer ts.Close()
 
@@ -96,7 +96,7 @@ func TestWebmd_Fetch_AddScheme(t *testing.T) {
 
 func TestWebmd_Fetch_Success(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		fmt.Fprint(w, "# Hello")
+		_, _ = fmt.Fprint(w, "# Hello")
 	}))
 	defer ts.Close()
 
@@ -120,7 +120,7 @@ func TestWebmd_Fetch_Success(t *testing.T) {
 func TestWebmd_Fetch_ServerError(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
-		fmt.Fprint(w, "server error")
+		_, _ = fmt.Fprint(w, "server error")
 	}))
 	defer ts.Close()
 

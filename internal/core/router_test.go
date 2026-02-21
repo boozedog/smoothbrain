@@ -24,10 +24,10 @@ type stubTransform struct {
 	mu     sync.Mutex
 }
 
-func (s *stubTransform) Name() string                            { return s.name }
-func (s *stubTransform) Init(json.RawMessage) error              { return nil }
+func (s *stubTransform) Name() string                                 { return s.name }
+func (s *stubTransform) Init(json.RawMessage) error                   { return nil }
 func (s *stubTransform) Start(context.Context, plugin.EventBus) error { return nil }
-func (s *stubTransform) Stop() error                             { return nil }
+func (s *stubTransform) Stop() error                                  { return nil }
 func (s *stubTransform) Transform(_ context.Context, e plugin.Event, _ string, _ map[string]any) (plugin.Event, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -46,10 +46,10 @@ type stubSink struct {
 	mu     sync.Mutex
 }
 
-func (s *stubSink) Name() string                            { return s.name }
-func (s *stubSink) Init(json.RawMessage) error              { return nil }
+func (s *stubSink) Name() string                                 { return s.name }
+func (s *stubSink) Init(json.RawMessage) error                   { return nil }
 func (s *stubSink) Start(context.Context, plugin.EventBus) error { return nil }
-func (s *stubSink) Stop() error                             { return nil }
+func (s *stubSink) Stop() error                                  { return nil }
 func (s *stubSink) HandleEvent(_ context.Context, e plugin.Event) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -76,7 +76,7 @@ func newTestRouter(t *testing.T, routes []config.RouteConfig, transforms map[str
 		t.Fatal(err)
 	}
 	r := NewRouter(routes, reg, st, log)
-	return r, func() { st.Close() }
+	return r, func() { _ = st.Close() }
 }
 
 // waitRoute sets up a notify channel and returns a wait function.

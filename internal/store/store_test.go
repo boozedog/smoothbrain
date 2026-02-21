@@ -12,7 +12,7 @@ func TestOpen_InMemory(t *testing.T) {
 	if s == nil {
 		t.Fatal("Open() returned nil Store")
 	}
-	t.Cleanup(func() { s.Close() })
+	t.Cleanup(func() { _ = s.Close() })
 }
 
 func TestOpen_SchemaCreated(t *testing.T) {
@@ -20,7 +20,7 @@ func TestOpen_SchemaCreated(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Open() error = %v", err)
 	}
-	t.Cleanup(func() { s.Close() })
+	t.Cleanup(func() { _ = s.Close() })
 
 	want := map[string]bool{
 		"events":         false,
@@ -62,7 +62,7 @@ func TestOpen_WALMode(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Open() error = %v", err)
 	}
-	t.Cleanup(func() { s.Close() })
+	t.Cleanup(func() { _ = s.Close() })
 
 	var mode string
 	if err := s.DB().QueryRow("PRAGMA journal_mode").Scan(&mode); err != nil {
@@ -88,7 +88,7 @@ func TestDB_ReturnsRawDB(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Open() error = %v", err)
 	}
-	t.Cleanup(func() { s.Close() })
+	t.Cleanup(func() { _ = s.Close() })
 
 	db := s.DB()
 	if db == nil {
@@ -104,7 +104,7 @@ func TestInsertAndQueryEvents(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { s.Close() })
+	t.Cleanup(func() { _ = s.Close() })
 
 	_, err = s.DB().Exec(
 		`INSERT INTO events (id, source, type, payload, timestamp) VALUES (?, ?, ?, ?, ?)`,
@@ -133,7 +133,7 @@ func TestInsertAndQueryPipelineRuns(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { s.Close() })
+	t.Cleanup(func() { _ = s.Close() })
 
 	// Insert event first for FK constraint
 	_, _ = s.DB().Exec(
@@ -168,7 +168,7 @@ func TestPluginState(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { s.Close() })
+	t.Cleanup(func() { _ = s.Close() })
 
 	_, err = s.DB().Exec(
 		`INSERT INTO plugin_state (plugin, key, value) VALUES (?, ?, ?)`,
@@ -203,7 +203,7 @@ func TestSupervisorLog(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { s.Close() })
+	t.Cleanup(func() { _ = s.Close() })
 
 	_, err = s.DB().Exec(
 		`INSERT INTO supervisor_log (task, result) VALUES (?, ?)`,

@@ -18,7 +18,7 @@ func newTestBus(t *testing.T) *Bus {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { st.Close() })
+	t.Cleanup(func() { _ = st.Close() })
 	return NewBus(st, slog.New(slog.NewTextHandler(io.Discard, nil)))
 }
 
@@ -82,7 +82,7 @@ func TestBus_DBLogging(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { st.Close() })
+	t.Cleanup(func() { _ = st.Close() })
 	bus := NewBus(st, slog.New(slog.NewTextHandler(io.Discard, nil)))
 
 	bus.Emit(testEvent("evt-5"))

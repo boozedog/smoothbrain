@@ -109,7 +109,7 @@ func TestXai_Summarize_CustomPrompt(t *testing.T) {
 	ts.Config.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_ = json.NewDecoder(r.Body).Decode(&gotBody)
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(chatResponse{
+		_ = json.NewEncoder(w).Encode(chatResponse{
 			Choices: []struct {
 				Message chatMessage `json:"message"`
 			}{
@@ -170,7 +170,7 @@ func newTestXAIServer(t *testing.T, status int, resp any) *httptest.Server {
 		w.WriteHeader(status)
 		if resp != nil {
 			w.Header().Set("Content-Type", "application/json")
-			json.NewEncoder(w).Encode(resp)
+			_ = json.NewEncoder(w).Encode(resp)
 		}
 	}))
 }

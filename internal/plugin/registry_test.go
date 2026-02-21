@@ -80,7 +80,7 @@ func newTestRegistry(t *testing.T) *Registry {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { db.Close() })
+	t.Cleanup(func() { _ = db.Close() })
 	return NewRegistry(slog.New(slog.NewTextHandler(io.Discard, nil)), db)
 }
 

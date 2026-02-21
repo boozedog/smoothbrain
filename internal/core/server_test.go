@@ -20,11 +20,11 @@ type stubHealthPlugin struct {
 	status plugin.HealthStatus
 }
 
-func (s *stubHealthPlugin) Name() string                                       { return s.name }
-func (s *stubHealthPlugin) Init(json.RawMessage) error                         { return nil }
-func (s *stubHealthPlugin) Start(context.Context, plugin.EventBus) error       { return nil }
-func (s *stubHealthPlugin) Stop() error                                        { return nil }
-func (s *stubHealthPlugin) HealthCheck(context.Context) plugin.HealthStatus    { return s.status }
+func (s *stubHealthPlugin) Name() string                                    { return s.name }
+func (s *stubHealthPlugin) Init(json.RawMessage) error                      { return nil }
+func (s *stubHealthPlugin) Start(context.Context, plugin.EventBus) error    { return nil }
+func (s *stubHealthPlugin) Stop() error                                     { return nil }
+func (s *stubHealthPlugin) HealthCheck(context.Context) plugin.HealthStatus { return s.status }
 
 // --- helpers ---
 
@@ -34,7 +34,7 @@ func newTestServer(t *testing.T) (*Server, *store.Store) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { st.Close() })
+	t.Cleanup(func() { _ = st.Close() })
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
 	reg := plugin.NewRegistry(log, st.DB())
 	hub := NewHub(st, log)
@@ -198,7 +198,7 @@ func TestHandleHealth_Error(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { st.Close() })
+	t.Cleanup(func() { _ = st.Close() })
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
 	reg := plugin.NewRegistry(log, st.DB())
 	reg.Register(&stubHealthPlugin{

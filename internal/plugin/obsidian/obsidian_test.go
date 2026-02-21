@@ -21,7 +21,7 @@ func newTestObsidian(t *testing.T) *Plugin {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { db.Close() })
+	t.Cleanup(func() { _ = db.Close() })
 	p := New(slog.New(slog.NewTextHandler(io.Discard, nil)))
 	p.cfg.VaultPath = dir
 	p.db = db
@@ -94,7 +94,7 @@ func TestRead_PathEscapesVault(t *testing.T) {
 
 func TestRead_ValidFile(t *testing.T) {
 	p := newTestObsidian(t)
-	if err := os.WriteFile(filepath.Join(p.cfg.VaultPath, "test.md"), []byte("# Hello\nContent"), 0644); err != nil {
+	if err := os.WriteFile(filepath.Join(p.cfg.VaultPath, "test.md"), []byte("# Hello\nContent"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	ev := plugin.Event{Payload: map[string]any{}}
@@ -113,7 +113,7 @@ func TestRead_ValidFile(t *testing.T) {
 
 func TestRead_AutoAppendsMd(t *testing.T) {
 	p := newTestObsidian(t)
-	if err := os.WriteFile(filepath.Join(p.cfg.VaultPath, "test.md"), []byte("# Hello\nContent"), 0644); err != nil {
+	if err := os.WriteFile(filepath.Join(p.cfg.VaultPath, "test.md"), []byte("# Hello\nContent"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	ev := plugin.Event{Payload: map[string]any{}}

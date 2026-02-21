@@ -17,7 +17,7 @@ func newTestHub(t *testing.T) *Hub {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { st.Close() })
+	t.Cleanup(func() { _ = st.Close() })
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
 	return NewHub(st, log)
 }
