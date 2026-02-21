@@ -68,12 +68,16 @@ func (h *Hub) broadcast() {
 	views := toEventViews(events, h.store, h.log)
 
 	var buf bytes.Buffer
-	EventsWrapper(views).Render(context.Background(), &buf)
+	if err := EventsWrapper(views).Render(context.Background(), &buf); err != nil {
+		h.log.Error("render events wrapper", "error", err)
+		return
+	}
 	msg := buf.Bytes()
 
 	h.mu.Lock()
 	defer h.mu.Unlock()
 
+	var dead []*client
 	for c := range h.clients {
 		writeCtx, writeCancel := context.WithTimeout(context.Background(), 5*time.Second)
 		err := c.conn.Write(writeCtx, websocket.MessageText, msg)
@@ -81,8 +85,11 @@ func (h *Hub) broadcast() {
 		if err != nil {
 			h.log.Debug("removing dead ws client", "error", err)
 			c.cancel()
-			delete(h.clients, c)
+			dead = append(dead, c)
 		}
+	}
+	for _, c := range dead {
+		delete(h.clients, c)
 	}
 }
 
@@ -107,8 +114,22 @@ func (h *Hub) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	events := queryEvents(h.store, h.log)
 	views := toEventViews(events, h.store, h.log)
 	var buf bytes.Buffer
-	EventsWrapper(views).Render(ctx, &buf)
-	conn.Write(ctx, websocket.MessageText, buf.Bytes())
+	if err := EventsWrapper(views).Render(ctx, &buf); err != nil {
+		h.log.Error("render events wrapper", "error", err)
+		h.mu.Lock()
+		delete(h.clients, c)
+		h.mu.Unlock()
+		cancel()
+		return
+	}
+	if err := conn.Write(ctx, websocket.MessageText, buf.Bytes()); err != nil {
+		h.log.Debug("ws initial push failed", "error", err)
+		h.mu.Lock()
+		delete(h.clients, c)
+		h.mu.Unlock()
+		cancel()
+		return
+	}
 
 	// Read loop keeps connection alive; exits on disconnect.
 	for {

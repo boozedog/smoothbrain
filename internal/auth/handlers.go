@@ -24,7 +24,9 @@ func (a *Auth) handleLoginPage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Content-Type", "text/html")
-	LoginPage().Render(r.Context(), w)
+	if err := LoginPage().Render(r.Context(), w); err != nil {
+		a.log.Error("auth: render login page", "error", err)
+	}
 }
 
 func (a *Auth) handleRegisterPage(w http.ResponseWriter, r *http.Request) {
@@ -33,43 +35,63 @@ func (a *Auth) handleRegisterPage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Content-Type", "text/html")
-	RegisterPage().Render(r.Context(), w)
+	if err := RegisterPage().Render(r.Context(), w); err != nil {
+		a.log.Error("auth: render register page", "error", err)
+	}
 }
 
 func (a *Auth) handleRegisterBegin(w http.ResponseWriter, r *http.Request) {
-	creation, err := a.BeginRegistration()
+	creation, challengeID, err := a.BeginRegistration()
 	if err != nil {
 		a.log.Error("auth: register begin", "error", err)
 		http.Error(w, "Registration failed", http.StatusInternalServerError)
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(creation)
+	w.Header().Set("X-Challenge-ID", challengeID)
+	if err := json.NewEncoder(w).Encode(creation); err != nil {
+		a.log.Error("auth: encode response", "error", err)
+	}
 }
 
 func (a *Auth) handleRegisterFinish(w http.ResponseWriter, r *http.Request) {
-	if err := a.FinishRegistration(r); err != nil {
+	challengeID := r.Header.Get("X-Challenge-ID")
+	if challengeID == "" {
+		http.Error(w, "Missing challenge ID", http.StatusBadRequest)
+		return
+	}
+	if err := a.FinishRegistration(challengeID, r); err != nil {
 		a.log.Error("auth: register finish", "error", err)
 		http.Error(w, "Registration failed", http.StatusBadRequest)
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]bool{"ok": true})
+	if err := json.NewEncoder(w).Encode(map[string]bool{"ok": true}); err != nil {
+		a.log.Error("auth: encode response", "error", err)
+	}
 }
 
 func (a *Auth) handleLoginBegin(w http.ResponseWriter, r *http.Request) {
-	assertion, err := a.BeginLogin()
+	assertion, challengeID, err := a.BeginLogin()
 	if err != nil {
 		a.log.Error("auth: login begin", "error", err)
 		http.Error(w, "Login failed", http.StatusInternalServerError)
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(assertion)
+	w.Header().Set("X-Challenge-ID", challengeID)
+	if err := json.NewEncoder(w).Encode(assertion); err != nil {
+		a.log.Error("auth: encode response", "error", err)
+	}
 }
 
 func (a *Auth) handleLoginFinish(w http.ResponseWriter, r *http.Request) {
-	token, err := a.FinishLogin(r)
+	challengeID := r.Header.Get("X-Challenge-ID")
+	if challengeID == "" {
+		http.Error(w, "Missing challenge ID", http.StatusBadRequest)
+		return
+	}
+	token, err := a.FinishLogin(challengeID, r)
 	if err != nil {
 		a.log.Error("auth: login finish", "error", err)
 		http.Error(w, "Login failed", http.StatusBadRequest)
@@ -94,7 +116,9 @@ func (a *Auth) handleLoginFinish(w http.ResponseWriter, r *http.Request) {
 	})
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]bool{"ok": true})
+	if err := json.NewEncoder(w).Encode(map[string]bool{"ok": true}); err != nil {
+		a.log.Error("auth: encode response", "error", err)
+	}
 }
 
 // isValidOrigin checks if the request origin matches any configured RP origin.

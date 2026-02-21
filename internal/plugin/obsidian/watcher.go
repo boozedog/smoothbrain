@@ -39,7 +39,7 @@ func NewWatcher(p *Plugin) (*Watcher, error) {
 		return nil
 	})
 	if err != nil {
-		fw.Close()
+		_ = fw.Close()
 		return nil, err
 	}
 
@@ -98,7 +98,9 @@ func (w *Watcher) handleEvent(event fsnotify.Event) {
 	// New directory: add to watcher.
 	if event.Has(fsnotify.Create) {
 		if info, err := os.Stat(event.Name); err == nil && info.IsDir() {
-			w.watcher.Add(event.Name)
+			if err := w.watcher.Add(event.Name); err != nil {
+				w.plugin.log.Warn("watcher: add dir failed", "path", event.Name, "error", err)
+			}
 			return
 		}
 	}

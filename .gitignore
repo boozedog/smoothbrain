@@ -5,5 +5,7 @@ tmp/
 *.db
 *.db-wal
 *.db-shm
+data/
 result
+dist/
 .env

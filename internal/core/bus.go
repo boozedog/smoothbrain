@@ -37,7 +37,14 @@ func (b *Bus) Emit(event plugin.Event) {
 	b.logEvent(event)
 
 	for _, fn := range subs {
-		fn(event)
+		func() {
+			defer func() {
+				if r := recover(); r != nil {
+					b.log.Error("subscriber panicked", "error", r, "source", event.Source, "type", event.Type)
+				}
+			}()
+			fn(event)
+		}()
 	}
 }
 

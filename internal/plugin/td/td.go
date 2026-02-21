@@ -128,7 +128,9 @@ func (p *Plugin) handleWebhook(w http.ResponseWriter, r *http.Request) {
 	p.bus.Emit(event)
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]string{"status": "accepted", "event_id": event.ID})
+	if err := json.NewEncoder(w).Encode(map[string]string{"status": "accepted", "event_id": event.ID}); err != nil {
+		p.log.Error("td: encode response", "error", err)
+	}
 }
 
 // verifySignature checks the HMAC-SHA256 signature: HMAC(secret, timestamp + "." + body).

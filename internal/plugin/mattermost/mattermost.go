@@ -46,7 +46,7 @@ type Plugin struct {
 
 func New(log *slog.Logger) *Plugin {
 	return &Plugin{
-		client: &http.Client{},
+		client: &http.Client{Timeout: 30 * time.Second},
 		log:    log,
 	}
 }
@@ -109,7 +109,7 @@ func (p *Plugin) HealthCheck(ctx context.Context) plugin.HealthStatus {
 		if err != nil {
 			return plugin.HealthStatus{Status: plugin.StatusError, Message: "ping failed: " + err.Error()}
 		}
-		resp.Body.Close()
+		_ = resp.Body.Close()
 		if resp.StatusCode != http.StatusOK {
 			return plugin.HealthStatus{Status: plugin.StatusError, Message: fmt.Sprintf("ping returned %d", resp.StatusCode)}
 		}
@@ -138,7 +138,7 @@ func (p *Plugin) fetchBotUser(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
@@ -199,7 +199,7 @@ func (p *Plugin) connectAndListen(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("dial: %w", err)
 	}
-	defer conn.CloseNow()
+	defer conn.CloseNow() //nolint:errcheck // best-effort cleanup on exit
 
 	// Authenticate via the WebSocket auth challenge.
 	authMsg, _ := json.Marshal(map[string]any{
@@ -383,7 +383,7 @@ func (p *Plugin) sendPost(channelID, rootID, text string) error {
 		return err
 	}
 
-	req, err := http.NewRequest("POST", u, bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(context.Background(), "POST", u, bytes.NewReader(body))
 	if err != nil {
 		return err
 	}
@@ -394,7 +394,7 @@ func (p *Plugin) sendPost(channelID, rootID, text string) error {
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusCreated {
 		respBody, _ := io.ReadAll(resp.Body)
@@ -419,7 +419,7 @@ func (p *Plugin) addReaction(postID, emojiName string) error {
 		return err
 	}
 
-	req, err := http.NewRequest("POST", u, bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(context.Background(), "POST", u, bytes.NewReader(body))
 	if err != nil {
 		return err
 	}
@@ -430,7 +430,7 @@ func (p *Plugin) addReaction(postID, emojiName string) error {
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		respBody, _ := io.ReadAll(resp.Body)
@@ -446,7 +446,7 @@ func (p *Plugin) removeReaction(postID, emojiName string) error {
 		return err
 	}
 
-	req, err := http.NewRequest("DELETE", u, nil)
+	req, err := http.NewRequestWithContext(context.Background(), "DELETE", u, nil)
 	if err != nil {
 		return err
 	}
@@ -456,7 +456,7 @@ func (p *Plugin) removeReaction(postID, emojiName string) error {
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		respBody, _ := io.ReadAll(resp.Body)
@@ -523,7 +523,7 @@ func (p *Plugin) HandleEvent(ctx context.Context, event plugin.Event) error {
 	if err != nil {
 		return fmt.Errorf("mattermost api call: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusCreated {
 		respBody, _ := io.ReadAll(resp.Body)
@@ -546,13 +546,19 @@ func (p *Plugin) HandleEvent(ctx context.Context, event plugin.Event) error {
 func (p *Plugin) uploadFile(ctx context.Context, channelID, filename string, content []byte) (string, error) {
 	var buf bytes.Buffer
 	w := multipart.NewWriter(&buf)
-	w.WriteField("channel_id", channelID)
+	if err := w.WriteField("channel_id", channelID); err != nil {
+		return "", fmt.Errorf("write channel_id field: %w", err)
+	}
 	part, err := w.CreateFormFile("files", filename)
 	if err != nil {
 		return "", fmt.Errorf("create form file: %w", err)
 	}
-	part.Write(content)
-	w.Close()
+	if _, err := part.Write(content); err != nil {
+		return "", fmt.Errorf("write file content: %w", err)
+	}
+	if err := w.Close(); err != nil {
+		return "", fmt.Errorf("close multipart writer: %w", err)
+	}
 
 	uploadURL, err := url.JoinPath(p.cfg.URL, "/api/v4/files")
 	if err != nil {
@@ -570,7 +576,7 @@ func (p *Plugin) uploadFile(ctx context.Context, channelID, filename string, con
 	if err != nil {
 		return "", fmt.Errorf("upload: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusCreated {
 		respBody, _ := io.ReadAll(resp.Body)

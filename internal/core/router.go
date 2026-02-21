@@ -78,7 +78,11 @@ func (r *Router) executeRoute(route config.RouteConfig, event plugin.Event) {
 		r.log.Error("failed to insert pipeline run", "error", err)
 		return
 	}
-	runID, _ := res.LastInsertId()
+	runID, err := res.LastInsertId()
+	if err != nil {
+		r.log.Error("failed to get pipeline run ID", "error", err)
+		return
+	}
 
 	// Deep-copy payload to avoid data races when multiple routes match the same event.
 	current := event
@@ -147,7 +151,12 @@ func (r *Router) executeRoute(route config.RouteConfig, event plugin.Event) {
 		return
 	}
 
-	maps.Copy(current.Payload, route.Sink.Params)
+	for k, v := range route.Sink.Params {
+		if _, exists := current.Payload[k]; exists {
+			r.log.Debug("sink param overwrites payload key", "key", k, "route", route.Name)
+		}
+		current.Payload[k] = v
+	}
 
 	if err := sink.HandleEvent(ctx, current); err != nil {
 		r.log.Error("sink delivery failed", "plugin", route.Sink.Plugin, "route", route.Name, "error", err)

@@ -72,7 +72,7 @@ func (p *Plugin) ask(ctx context.Context, event plugin.Event, params map[string]
 	}
 
 	p.log.Info("claudecode: running", "message", message)
-	cmd := exec.CommandContext(ctx, binary, args...)
+	cmd := exec.CommandContext(ctx, binary, args...) //nolint:gosec // binary path is from trusted config
 	output, err := cmd.Output()
 	if err != nil {
 		var stderr string

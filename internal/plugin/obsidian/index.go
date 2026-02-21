@@ -95,7 +95,7 @@ func (p *Plugin) IndexVault() error {
 	if err != nil {
 		return fmt.Errorf("obsidian: query existing: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	existing := make(map[string]int64)
 	for rows.Next() {
@@ -177,7 +177,7 @@ func (p *Plugin) Search(query string, limit int) ([]SearchResult, error) {
 	if err != nil {
 		return nil, fmt.Errorf("obsidian: search: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var results []SearchResult
 	for rows.Next() {

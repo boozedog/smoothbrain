@@ -4,8 +4,17 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 	"time"
 )
+
+func DefaultStateDir() (string, error) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", fmt.Errorf("resolve home dir: %w", err)
+	}
+	return filepath.Join(home, ".local", "state", "smoothbrain"), nil
+}
 
 type Config struct {
 	HTTP       HTTPConfig                 `json:"http"`
@@ -15,6 +24,7 @@ type Config struct {
 	Plugins    map[string]json.RawMessage `json:"plugins"`
 	Routes     []RouteConfig              `json:"routes"`
 	Supervisor SupervisorConfig           `json:"supervisor"`
+	Tailscale  TailscaleConfig            `json:"tailscale"`
 }
 
 type AuthConfig struct {
@@ -60,6 +70,15 @@ type SupervisorTask struct {
 	Plugin   string `json:"plugin"`
 }
 
+type TailscaleConfig struct {
+	Enabled     bool   `json:"enabled"`
+	Hostname    string `json:"hostname"`
+	ServiceName string `json:"service_name"`
+	AuthKey     string `json:"auth_key"`
+	StateDir    string `json:"state_dir"`
+	Ephemeral   bool   `json:"ephemeral"`
+}
+
 func Load(path string) (*Config, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -69,9 +88,19 @@ func Load(path string) (*Config, error) {
 	// Expand $VAR and ${VAR} references with environment variables.
 	data = []byte(os.ExpandEnv(string(data)))
 
+	tsnetStateDir := "data/tsnet"
+	if dir, err := DefaultStateDir(); err == nil {
+		tsnetStateDir = filepath.Join(dir, "tsnet")
+	}
+
 	cfg := &Config{
 		HTTP:     HTTPConfig{Address: "127.0.0.1:8080"},
 		Database: "smoothbrain.db",
+		Tailscale: TailscaleConfig{
+			Hostname:    "smoothbrain",
+			ServiceName: "svc:smoothbrain",
+			StateDir:    tsnetStateDir,
+		},
 	}
 	if err := json.Unmarshal(data, cfg); err != nil {
 		return nil, fmt.Errorf("parsing config: %w", err)
@@ -90,6 +119,9 @@ func (c *Config) validate() error {
 	}
 	if c.Database == "" {
 		return fmt.Errorf("config: database path must not be empty")
+	}
+	if c.Tailscale.Enabled && c.Tailscale.ServiceName == "" {
+		return fmt.Errorf("config: tailscale.service_name must not be empty when enabled")
 	}
 	seen := make(map[string]bool)
 	for i, r := range c.Routes {

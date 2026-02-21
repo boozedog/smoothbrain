@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/dmarx/smoothbrain/internal/plugin"
 )
@@ -29,7 +30,7 @@ type Plugin struct {
 
 func New(log *slog.Logger) *Plugin {
 	return &Plugin{
-		client: &http.Client{},
+		client: &http.Client{Timeout: 120 * time.Second},
 		log:    log,
 	}
 }
@@ -114,11 +115,11 @@ func (p *Plugin) summarize(ctx context.Context, event plugin.Event, params map[s
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+p.apiKey)
 
-	resp, err := p.client.Do(req)
+	resp, err := p.client.Do(req) //nolint:gosec // URL is a fixed API endpoint
 	if err != nil {
 		return event, fmt.Errorf("xai api call: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	respBody, _ := io.ReadAll(resp.Body)
 	if resp.StatusCode != http.StatusOK {

@@ -34,6 +34,9 @@ func NewSupervisor(tasks []config.SupervisorTask, bus *Bus, store *store.Store, 
 }
 
 func (s *Supervisor) Start(ctx context.Context) {
+	if s.cancel != nil {
+		return
+	}
 	ctx, s.cancel = context.WithCancel(ctx)
 	for _, task := range s.tasks {
 		s.wg.Add(1)

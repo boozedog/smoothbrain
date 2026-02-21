@@ -25,6 +25,7 @@ import (
 	"github.com/dmarx/smoothbrain/internal/plugin/xai"
 	"github.com/dmarx/smoothbrain/internal/store"
 	"github.com/lmittmann/tint"
+	"tailscale.com/tsnet"
 )
 
 func main() {
@@ -66,7 +67,7 @@ func main() {
 		log.Error("failed to open database", "error", err)
 		os.Exit(1)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	log.Info("database ready", "path", cfg.Database)
 
 	// Plugin registry
@@ -130,7 +131,7 @@ func main() {
 	srv := core.NewServer(db, log, hub, registry, cfg.Routes, logBuf)
 	registry.RegisterWebhooks(srv)
 
-	var handler http.Handler = srv.Handler()
+	handler := srv.Handler()
 	if cfg.Auth.RPID != "" {
 		a, err := auth.New(cfg.Auth, db.DB(), log)
 		if err != nil {
@@ -140,11 +141,52 @@ func main() {
 		a.RegisterRoutes(srv.Mux())
 		handler = a.Middleware(srv.Handler())
 		log.Info("auth enabled", "rp_id", cfg.Auth.RPID)
+		a.StartCleanup(ctx)
+	}
+
+	// tsnet listener (Tailscale Service)
+	var tsServer *tsnet.Server
+	if cfg.Tailscale.Enabled {
+		if err := os.MkdirAll(cfg.Tailscale.StateDir, 0o700); err != nil {
+			log.Error("failed to create tsnet state dir", "error", err)
+			os.Exit(1)
+		}
+		tsServer = &tsnet.Server{
+			Hostname:  cfg.Tailscale.Hostname,
+			Dir:       cfg.Tailscale.StateDir,
+			AuthKey:   cfg.Tailscale.AuthKey,
+			Ephemeral: cfg.Tailscale.Ephemeral,
+		}
+		ln, err := tsServer.ListenService(cfg.Tailscale.ServiceName, tsnet.ServiceModeHTTP{HTTPS: true, Port: 443})
+		if err != nil {
+			log.Error("tsnet listen failed", "error", err)
+			os.Exit(1)
+		}
+		go func() {
+			log.Info("tsnet service listening", "service", cfg.Tailscale.ServiceName, "hostname", cfg.Tailscale.Hostname)
+			//nolint:gosec // tsnet listener is internal; timeouts are set on the main HTTP server
+			if err := http.Serve(ln, handler); err != nil {
+				log.Error("tsnet serve error", "error", err)
+			}
+		}()
+
+		// Inject tsnet server into the tailscale health plugin.
+		if p, ok := registry.Get("tailscale"); ok {
+			if tp, ok := p.(*tailscale.Plugin); ok {
+				tp.SetServer(tsServer)
+			} else {
+				log.Error("tailscale plugin has unexpected type")
+			}
+		}
 	}
 
 	httpServer := &http.Server{
-		Addr:    cfg.HTTP.Address,
-		Handler: handler,
+		Addr:              cfg.HTTP.Address,
+		Handler:           handler,
+		ReadHeaderTimeout: 10 * time.Second,
+		ReadTimeout:       30 * time.Second,
+		WriteTimeout:      60 * time.Second,
+		IdleTimeout:       120 * time.Second,
 	}
 
 	// Graceful shutdown
@@ -155,7 +197,14 @@ func main() {
 		log.Info("shutting down")
 		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer shutdownCancel()
-		httpServer.Shutdown(shutdownCtx)
+		if err := httpServer.Shutdown(shutdownCtx); err != nil {
+			log.Error("http shutdown error", "error", err)
+		}
+		if tsServer != nil {
+			if err := tsServer.Close(); err != nil {
+				log.Error("tsnet close error", "error", err)
+			}
+		}
 		cancel()
 	}()
 

@@ -24,6 +24,7 @@ async function doLogin() {
     try {
         const beginResp = await fetch('/auth/login/begin', {method: 'POST'});
         if (!beginResp.ok) throw new Error('Login failed');
+        const challengeID = beginResp.headers.get('X-Challenge-ID');
         const options = await beginResp.json();
         options.publicKey.challenge = base64urlToBuffer(options.publicKey.challenge);
         for (const cred of options.publicKey.allowCredentials || []) {
@@ -32,7 +33,7 @@ async function doLogin() {
         const assertion = await navigator.credentials.get({publicKey: options.publicKey});
         const finishResp = await fetch('/auth/login/finish', {
             method: 'POST',
-            headers: {'Content-Type': 'application/json'},
+            headers: {'Content-Type': 'application/json', 'X-Challenge-ID': challengeID},
             body: JSON.stringify({
                 id: assertion.id,
                 rawId: bufferToBase64url(assertion.rawId),
@@ -79,6 +80,7 @@ async function doRegister() {
     try {
         const beginResp = await fetch('/auth/register/begin', {method: 'POST'});
         if (!beginResp.ok) throw new Error('Registration failed');
+        const challengeID = beginResp.headers.get('X-Challenge-ID');
         const options = await beginResp.json();
         options.publicKey.challenge = base64urlToBuffer(options.publicKey.challenge);
         options.publicKey.user.id = base64urlToBuffer(options.publicKey.user.id);
@@ -90,7 +92,7 @@ async function doRegister() {
         const credential = await navigator.credentials.create({publicKey: options.publicKey});
         const finishResp = await fetch('/auth/register/finish', {
             method: 'POST',
-            headers: {'Content-Type': 'application/json'},
+            headers: {'Content-Type': 'application/json', 'X-Challenge-ID': challengeID},
             body: JSON.stringify({
                 id: credential.id,
                 rawId: bufferToBase64url(credential.rawId),

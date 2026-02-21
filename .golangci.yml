@@ -1,0 +1,38 @@
+version: "2"
+
+run:
+  timeout: 5m
+
+linters:
+  enable:
+    - govet
+    - errcheck
+    - staticcheck
+    - unused
+    - misspell
+    - gosec
+
+  settings:
+    errcheck:
+      exclude-functions:
+        - "(*os.File).Close"
+        - "(io.Closer).Close"
+        - "(net.Conn).Close"
+        - "(*database/sql.DB).Close"
+        - "(*database/sql.Rows).Close"
+        - "(net/http.ResponseWriter).Write"
+
+    gosec:
+      excludes:
+        - G117
+        - G304
+        - G703
+        - G704
+
+formatters:
+  enable:
+    - gofumpt
+
+  settings:
+    gofumpt:
+      extra-rules: true

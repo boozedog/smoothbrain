@@ -77,49 +77,63 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 	if agg.Status == plugin.StatusError {
 		w.WriteHeader(http.StatusServiceUnavailable)
 	}
-	json.NewEncoder(w).Encode(map[string]any{
+	if err := json.NewEncoder(w).Encode(map[string]any{
 		"status":  agg.Status,
 		"message": agg.Message,
 		"plugins": results,
-	})
+	}); err != nil {
+		s.log.Error("failed to encode health response", "error", err)
+	}
 }
 
 func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
 	events := queryEvents(s.store, s.log)
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(events)
+	if err := json.NewEncoder(w).Encode(events); err != nil {
+		s.log.Error("failed to encode events response", "error", err)
+	}
 }
 
 func (s *Server) handleEventsHTML(w http.ResponseWriter, r *http.Request) {
 	events := queryEvents(s.store, s.log)
 	views := toEventViews(events, s.store, s.log)
 	w.Header().Set("Content-Type", "text/html")
-	EventsTable(views).Render(r.Context(), w)
+	if err := EventsTable(views).Render(r.Context(), w); err != nil {
+		s.log.Error("render events table", "error", err)
+	}
 }
 
 func (s *Server) handleEventRuns(w http.ResponseWriter, r *http.Request) {
 	eventID := r.PathValue("id")
 	runs := queryPipelineRuns(s.store, s.log, eventID)
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(runs)
+	if err := json.NewEncoder(w).Encode(runs); err != nil {
+		s.log.Error("failed to encode event runs response", "error", err)
+	}
 }
 
 func (s *Server) handleHealthHTML(w http.ResponseWriter, r *http.Request) {
 	agg, _ := s.registry.AggregateHealth(r.Context(), healthCheckTimeout)
 	w.Header().Set("Content-Type", "text/html")
-	HealthBadge(string(agg.Status)).Render(r.Context(), w)
+	if err := HealthBadge(string(agg.Status)).Render(r.Context(), w); err != nil {
+		s.log.Error("render health badge", "error", err)
+	}
 }
 
 func (s *Server) handleStatusHTML(w http.ResponseWriter, r *http.Request) {
 	info := buildStatusInfo(r.Context(), s.registry, s.routes)
 	w.Header().Set("Content-Type", "text/html")
-	StatusTab(info).Render(r.Context(), w)
+	if err := StatusTab(info).Render(r.Context(), w); err != nil {
+		s.log.Error("render status tab", "error", err)
+	}
 }
 
 func (s *Server) handleLogHTML(w http.ResponseWriter, r *http.Request) {
 	entries := s.logBuf.Entries()
 	w.Header().Set("Content-Type", "text/html")
-	SystemLog(entries).Render(r.Context(), w)
+	if err := SystemLog(entries).Render(r.Context(), w); err != nil {
+		s.log.Error("render system log", "error", err)
+	}
 }
 
 func queryEvents(s *store.Store, log *slog.Logger) []map[string]any {
@@ -130,7 +144,7 @@ func queryEvents(s *store.Store, log *slog.Logger) []map[string]any {
 		log.Error("query events failed", "error", err)
 		return []map[string]any{}
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var events []map[string]any
 	for rows.Next() {
@@ -178,7 +192,7 @@ func queryPipelineRuns(s *store.Store, log *slog.Logger, eventID string) []pipel
 		log.Error("query pipeline runs failed", "error", err)
 		return []pipelineRun{}
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var runs []pipelineRun
 	for rows.Next() {

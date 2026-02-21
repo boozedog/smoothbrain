@@ -98,7 +98,7 @@ func parseSteps(stepsJSON string) []stepResult {
 // sourceColor returns a stable CSS hsl color for any source/plugin name.
 func sourceColor(name string) string {
 	h := fnv.New32a()
-	h.Write([]byte(name))
+	_, _ = h.Write([]byte(name)) //nolint:errcheck // hash.Write never returns an error
 	hue := h.Sum32() % 360
 	return fmt.Sprintf("hsl(%d, 70%%, 55%%)", hue)
 }
