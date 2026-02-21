@@ -6,11 +6,14 @@ import (
 	"io/fs"
 	"log/slog"
 	"net/http"
+	"time"
 
 	"github.com/dmarx/smoothbrain/internal/config"
 	"github.com/dmarx/smoothbrain/internal/plugin"
 	"github.com/dmarx/smoothbrain/internal/store"
 )
+
+const healthCheckTimeout = 5 * time.Second
 
 //go:embed all:web
 var webFS embed.FS
@@ -57,6 +60,11 @@ func (s *Server) Handler() http.Handler {
 	return s.mux
 }
 
+// Mux returns the underlying ServeMux for registering additional routes.
+func (s *Server) Mux() *http.ServeMux {
+	return s.mux
+}
+
 // RegisterWebhook registers a POST handler at /hooks/{name}.
 func (s *Server) RegisterWebhook(name string, handler http.HandlerFunc) {
 	s.mux.HandleFunc("POST /hooks/"+name, handler)
@@ -64,8 +72,16 @@ func (s *Server) RegisterWebhook(name string, handler http.HandlerFunc) {
 }
 
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
+	agg, results := s.registry.AggregateHealth(r.Context(), healthCheckTimeout)
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+	if agg.Status == plugin.StatusError {
+		w.WriteHeader(http.StatusServiceUnavailable)
+	}
+	json.NewEncoder(w).Encode(map[string]any{
+		"status":  agg.Status,
+		"message": agg.Message,
+		"plugins": results,
+	})
 }
 
 func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
@@ -89,12 +105,13 @@ func (s *Server) handleEventRuns(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleHealthHTML(w http.ResponseWriter, r *http.Request) {
+	agg, _ := s.registry.AggregateHealth(r.Context(), healthCheckTimeout)
 	w.Header().Set("Content-Type", "text/html")
-	HealthBadge(true).Render(r.Context(), w)
+	HealthBadge(string(agg.Status)).Render(r.Context(), w)
 }
 
 func (s *Server) handleStatusHTML(w http.ResponseWriter, r *http.Request) {
-	info := buildStatusInfo(s.registry, s.routes)
+	info := buildStatusInfo(r.Context(), s.registry, s.routes)
 	w.Header().Set("Content-Type", "text/html")
 	StatusTab(info).Render(r.Context(), w)
 }

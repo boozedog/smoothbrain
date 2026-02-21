@@ -1,6 +1,7 @@
 package core
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"hash/fnv"
@@ -8,6 +9,7 @@ import (
 	"log/slog"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/dmarx/smoothbrain/internal/config"
 	"github.com/dmarx/smoothbrain/internal/plugin"
@@ -112,9 +114,11 @@ type statusInfo struct {
 }
 
 type pluginStatus struct {
-	Name  string
-	Types string
-	Color string
+	Name    string
+	Types   string
+	Color   string
+	Health  string
+	Message string
 }
 
 type routeStatus struct {
@@ -136,6 +140,19 @@ func logLevelClass(level string) string {
 		return "log-debug"
 	default:
 		return ""
+	}
+}
+
+func healthBadgeClass(status string) string {
+	switch status {
+	case "ok":
+		return "uk-label uk-label-primary"
+	case "degraded":
+		return "uk-label uk-label-secondary"
+	case "error":
+		return "uk-label uk-label-destructive"
+	default:
+		return "uk-label"
 	}
 }
 
@@ -181,15 +198,26 @@ func colorizeJSON(src string) string {
 	return b.String()
 }
 
-func buildStatusInfo(reg *plugin.Registry, routes []config.RouteConfig) statusInfo {
+func buildStatusInfo(ctx context.Context, reg *plugin.Registry, routes []config.RouteConfig) statusInfo {
 	var info statusInfo
 
+	healthResults := reg.CheckHealth(ctx, 5*time.Second)
+	healthMap := make(map[string]plugin.HealthResult, len(healthResults))
+	for _, hr := range healthResults {
+		healthMap[hr.Name] = hr
+	}
+
 	for _, p := range reg.All() {
-		info.Plugins = append(info.Plugins, pluginStatus{
+		ps := pluginStatus{
 			Name:  p.Name,
 			Types: strings.Join(p.Types, ", "),
 			Color: sourceColor(p.Name),
-		})
+		}
+		if hr, ok := healthMap[p.Name]; ok {
+			ps.Health = string(hr.Status.Status)
+			ps.Message = hr.Status.Message
+		}
+		info.Plugins = append(info.Plugins, ps)
 	}
 
 	for _, r := range routes {

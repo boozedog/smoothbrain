@@ -12,6 +12,7 @@ import (
 	"net/url"
 	"os"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/coder/websocket"
@@ -33,10 +34,11 @@ type Plugin struct {
 	log    *slog.Logger
 
 	// Source fields (only used when Listen is true).
-	bus      plugin.EventBus
-	botID    string
-	botName  string
-	wsCancel context.CancelFunc
+	bus         plugin.EventBus
+	botID       string
+	botName     string
+	wsCancel    context.CancelFunc
+	wsConnected atomic.Bool
 
 	// Command dispatch.
 	commands []plugin.CommandInfo
@@ -91,6 +93,35 @@ func (p *Plugin) Stop() error {
 	return nil
 }
 
+func (p *Plugin) HealthCheck(ctx context.Context) plugin.HealthStatus {
+	if !p.cfg.Listen {
+		// Sink-only mode: ping the API to verify connectivity.
+		u, err := url.JoinPath(p.cfg.URL, "/api/v4/system/ping")
+		if err != nil {
+			return plugin.HealthStatus{Status: plugin.StatusError, Message: "bad URL: " + err.Error()}
+		}
+		req, err := http.NewRequestWithContext(ctx, "GET", u, nil)
+		if err != nil {
+			return plugin.HealthStatus{Status: plugin.StatusError, Message: err.Error()}
+		}
+		req.Header.Set("Authorization", "Bearer "+p.token)
+		resp, err := p.client.Do(req)
+		if err != nil {
+			return plugin.HealthStatus{Status: plugin.StatusError, Message: "ping failed: " + err.Error()}
+		}
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusOK {
+			return plugin.HealthStatus{Status: plugin.StatusError, Message: fmt.Sprintf("ping returned %d", resp.StatusCode)}
+		}
+		return plugin.HealthStatus{Status: plugin.StatusOK}
+	}
+	// Listen mode: check WebSocket connection state.
+	if !p.wsConnected.Load() {
+		return plugin.HealthStatus{Status: plugin.StatusDegraded, Message: "websocket disconnected, reconnecting"}
+	}
+	return plugin.HealthStatus{Status: plugin.StatusOK}
+}
+
 // fetchBotUser calls GET /api/v4/users/me to learn the bot's own user ID and username.
 func (p *Plugin) fetchBotUser(ctx context.Context) error {
 	u, err := url.JoinPath(p.cfg.URL, "/api/v4/users/me")
@@ -138,6 +169,7 @@ func (p *Plugin) listenWS(ctx context.Context) {
 			return
 		}
 		p.log.Error("mattermost: websocket disconnected", "error", err)
+		p.wsConnected.Store(false)
 
 		// Reset backoff if the connection was stable for >60s.
 		if time.Since(start) > 60*time.Second {
@@ -180,6 +212,7 @@ func (p *Plugin) connectAndListen(ctx context.Context) error {
 	}
 
 	p.log.Info("mattermost: websocket connected")
+	p.wsConnected.Store(true)
 
 	for {
 		_, data, err := conn.Read(ctx)

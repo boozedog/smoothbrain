@@ -62,3 +62,21 @@ type StoreAware interface {
 type WebhookSource interface {
 	RegisterWebhook(reg WebhookRegistrar)
 }
+
+type Status string
+
+const (
+	StatusOK       Status = "ok"
+	StatusDegraded Status = "degraded"
+	StatusError    Status = "error"
+)
+
+type HealthStatus struct {
+	Status  Status `json:"status"`
+	Message string `json:"message,omitempty"`
+}
+
+// HealthChecker is optionally implemented by plugins that can report their health.
+type HealthChecker interface {
+	HealthCheck(ctx context.Context) HealthStatus
+}

@@ -1,8 +1,17 @@
 {
-  "http": {"address": "0.0.0.0:8080"},
+  "http": {"address": "127.0.0.1:8080"},
   "database": "smoothbrain.db",
   "log_level": "debug",
+  "auth": {
+    "rp_display_name": "smoothbrain",
+    "rp_id": "smoothbrain.tail9fdd65.ts.net",
+    "rp_origins": ["https://smoothbrain.tail9fdd65.ts.net"]
+  },
   "plugins": {
+    "tailscale": {
+      "service_name": "smoothbrain",
+      "target": "http://127.0.0.1:8080"
+    },
     "uptime-kuma": {"webhook_token": "$UPTIMEKUMA_WEBHOOK_TOKEN"},
     "xai": {"model": "grok-4-1-fast-non-reasoning", "api_key": "$XAI_API_KEY"},
     "mattermost": {"url": "$MATTERMOST_URL", "token": "$MATTERMOST_TOKEN", "listen": true},

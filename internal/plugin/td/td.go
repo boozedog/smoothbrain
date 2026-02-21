@@ -12,7 +12,9 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/dmarx/smoothbrain/internal/plugin"
@@ -30,10 +32,16 @@ type Plugin struct {
 	cfg Config
 	log *slog.Logger
 	bus plugin.EventBus
+
+	nonceMu sync.Mutex
+	nonces  map[string]time.Time // signature -> time seen
 }
 
 func New(log *slog.Logger) *Plugin {
-	return &Plugin{log: log}
+	return &Plugin{
+		log:    log,
+		nonces: make(map[string]time.Time),
+	}
 }
 
 func (p *Plugin) Name() string { return "td" }
@@ -78,6 +86,14 @@ func (p *Plugin) handleWebhook(w http.ResponseWriter, r *http.Request) {
 		sig := r.Header.Get("X-TD-Signature")
 		if !verifySignature(p.cfg.WebhookSecret, ts, body, sig) {
 			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return
+		}
+		if !isTimestampFresh(ts, 5*time.Minute) {
+			http.Error(w, "unauthorized: timestamp too old", http.StatusUnauthorized)
+			return
+		}
+		if p.isReplayedNonce(sig) {
+			http.Error(w, "unauthorized: replayed request", http.StatusUnauthorized)
 			return
 		}
 	}
@@ -133,6 +149,49 @@ func verifySignature(secret, timestamp string, body []byte, signature string) bo
 	mac.Write(body)
 
 	return hmac.Equal(mac.Sum(nil), expected)
+}
+
+// isTimestampFresh returns true if the timestamp is within maxAge of now.
+func isTimestampFresh(ts string, maxAge time.Duration) bool {
+	// Try RFC3339 first.
+	t, err := time.Parse(time.RFC3339, ts)
+	if err != nil {
+		// Try Unix epoch (seconds as string).
+		sec, err := strconv.ParseInt(ts, 10, 64)
+		if err != nil {
+			return false
+		}
+		t = time.Unix(sec, 0)
+	}
+	diff := time.Since(t)
+	if diff < 0 {
+		diff = -diff
+	}
+	return diff <= maxAge
+}
+
+const nonceWindow = 5*time.Minute + 30*time.Second
+
+// isReplayedNonce returns true if the signature was already seen within the
+// replay window. It evicts expired entries on each call.
+func (p *Plugin) isReplayedNonce(sig string) bool {
+	now := time.Now()
+
+	p.nonceMu.Lock()
+	defer p.nonceMu.Unlock()
+
+	// Evict expired nonces.
+	for k, seen := range p.nonces {
+		if now.Sub(seen) > nonceWindow {
+			delete(p.nonces, k)
+		}
+	}
+
+	if _, exists := p.nonces[sig]; exists {
+		return true
+	}
+	p.nonces[sig] = now
+	return false
 }
 
 type webhookPayload struct {

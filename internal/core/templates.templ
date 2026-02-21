@@ -134,6 +134,7 @@ templ StatusTab(info statusInfo) {
 						<tr>
 							<th>Name</th>
 							<th>Type</th>
+							<th>Health</th>
 						</tr>
 					</thead>
 					<tbody>
@@ -144,6 +145,12 @@ templ StatusTab(info statusInfo) {
 									{ p.Name }
 								</td>
 								<td class="mono">{ p.Types }</td>
+								<td>
+									<span class={ healthBadgeClass(p.Health) }>{ p.Health }</span>
+									if p.Message != "" {
+										<span class="health-msg">{ p.Message }</span>
+									}
+								</td>
 							</tr>
 						}
 					</tbody>
@@ -190,10 +197,12 @@ templ StatusTab(info statusInfo) {
 
 }
 
-templ HealthBadge(ok bool) {
-	if ok {
+templ HealthBadge(status string) {
+	if status == "ok" {
 		<span class="uk-label uk-label-primary">● OK</span>
+	} else if status == "degraded" {
+		<span class="uk-label uk-label-secondary">● DEGRADED</span>
 	} else {
-		<span class="uk-label uk-label-destructive">● DOWN</span>
+		<span class="uk-label uk-label-destructive">● ERROR</span>
 	}
 }

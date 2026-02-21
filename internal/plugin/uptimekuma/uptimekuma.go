@@ -2,6 +2,7 @@ package uptimekuma
 
 import (
 	"context"
+	"crypto/subtle"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -63,7 +64,7 @@ func (p *Plugin) RegisterWebhook(reg plugin.WebhookRegistrar) {
 
 func (p *Plugin) handleWebhook(w http.ResponseWriter, r *http.Request) {
 	if p.cfg.WebhookToken != "" {
-		if r.Header.Get("X-Webhook-Token") != p.cfg.WebhookToken {
+		if subtle.ConstantTimeCompare([]byte(r.Header.Get("X-Webhook-Token")), []byte(p.cfg.WebhookToken)) != 1 {
 			http.Error(w, "unauthorized", http.StatusUnauthorized)
 			return
 		}

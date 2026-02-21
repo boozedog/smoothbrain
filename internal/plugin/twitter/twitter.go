@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"os"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/dmarx/smoothbrain/internal/plugin"
@@ -25,11 +26,13 @@ type Config struct {
 }
 
 type Plugin struct {
-	cfg          Config
-	bearerToken  string
-	pollInterval time.Duration
-	client       *http.Client
-	log          *slog.Logger
+	cfg           Config
+	bearerToken   string
+	pollInterval  time.Duration
+	client        *http.Client
+	log           *slog.Logger
+	lastFetchOK   atomic.Bool
+	lastFetchTime atomic.Int64
 }
 
 func New(log *slog.Logger) *Plugin {
@@ -131,6 +134,8 @@ func (p *Plugin) fetch(ctx context.Context, bus plugin.EventBus, sinceID string)
 		req, err := http.NewRequestWithContext(ctx, "GET", reqURL, nil)
 		if err != nil {
 			p.log.Error("twitter: build request", "error", err)
+			p.lastFetchOK.Store(false)
+			p.lastFetchTime.Store(time.Now().UnixNano())
 			return newestID
 		}
 		req.Header.Set("Authorization", "Bearer "+p.bearerToken)
@@ -138,6 +143,8 @@ func (p *Plugin) fetch(ctx context.Context, bus plugin.EventBus, sinceID string)
 		resp, err := p.client.Do(req)
 		if err != nil {
 			p.log.Error("twitter: api request", "error", err)
+			p.lastFetchOK.Store(false)
+			p.lastFetchTime.Store(time.Now().UnixNano())
 			return newestID
 		}
 
@@ -146,6 +153,8 @@ func (p *Plugin) fetch(ctx context.Context, bus plugin.EventBus, sinceID string)
 
 		if resp.StatusCode != http.StatusOK {
 			p.log.Error("twitter: api error", "status", resp.StatusCode, "body", string(body))
+			p.lastFetchOK.Store(false)
+			p.lastFetchTime.Store(time.Now().UnixNano())
 			return newestID
 		}
 
@@ -154,6 +163,8 @@ func (p *Plugin) fetch(ctx context.Context, bus plugin.EventBus, sinceID string)
 		var result searchResponse
 		if err := json.Unmarshal(body, &result); err != nil {
 			p.log.Error("twitter: parse response", "error", err)
+			p.lastFetchOK.Store(false)
+			p.lastFetchTime.Store(time.Now().UnixNano())
 			return newestID
 		}
 
@@ -201,7 +212,27 @@ func (p *Plugin) fetch(ctx context.Context, bus plugin.EventBus, sinceID string)
 		nextToken = result.Meta.NextToken
 	}
 
+	p.lastFetchOK.Store(true)
+	p.lastFetchTime.Store(time.Now().UnixNano())
 	return newestID
+}
+
+func (p *Plugin) HealthCheck(_ context.Context) plugin.HealthStatus {
+	if p.bearerToken == "" || p.cfg.ListID == "" {
+		return plugin.HealthStatus{Status: plugin.StatusOK, Message: "not configured"}
+	}
+	lastNano := p.lastFetchTime.Load()
+	if lastNano == 0 {
+		return plugin.HealthStatus{Status: plugin.StatusOK, Message: "no polls yet"}
+	}
+	if !p.lastFetchOK.Load() {
+		return plugin.HealthStatus{Status: plugin.StatusDegraded, Message: "last poll failed"}
+	}
+	lastTime := time.Unix(0, lastNano)
+	if time.Since(lastTime) > 3*p.pollInterval {
+		return plugin.HealthStatus{Status: plugin.StatusDegraded, Message: "no successful poll in 3x interval"}
+	}
+	return plugin.HealthStatus{Status: plugin.StatusOK}
 }
 
 // X API v2 response types.

@@ -77,6 +77,16 @@ func (p *Plugin) Stop() error {
 	return nil
 }
 
+func (p *Plugin) HealthCheck(_ context.Context) plugin.HealthStatus {
+	if _, err := os.Stat(p.cfg.VaultPath); err != nil {
+		return plugin.HealthStatus{Status: plugin.StatusError, Message: "vault inaccessible: " + err.Error()}
+	}
+	if p.watcher == nil {
+		return plugin.HealthStatus{Status: plugin.StatusDegraded, Message: "file watcher not running"}
+	}
+	return plugin.HealthStatus{Status: plugin.StatusOK}
+}
+
 func (p *Plugin) Transform(ctx context.Context, event plugin.Event, action string, params map[string]any) (plugin.Event, error) {
 	switch action {
 	case "search":

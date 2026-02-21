@@ -6,7 +6,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"strings"
 	"sync"
+	"time"
 )
 
 type Registry struct {
@@ -134,6 +136,67 @@ func (r *Registry) All() []PluginInfo {
 		infos = append(infos, info)
 	}
 	return infos
+}
+
+// HealthResult holds the health status for a single plugin.
+type HealthResult struct {
+	Name   string       `json:"name"`
+	Status HealthStatus `json:"health"`
+}
+
+// CheckHealth queries all plugins for their health status. Plugins implementing
+// HealthChecker are called with a per-plugin timeout; others default to StatusOK.
+func (r *Registry) CheckHealth(ctx context.Context, timeout time.Duration) []HealthResult {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	results := make([]HealthResult, 0, len(r.order))
+	for _, p := range r.order {
+		hr := HealthResult{Name: p.Name()}
+		if hc, ok := p.(HealthChecker); ok {
+			tctx, cancel := context.WithTimeout(ctx, timeout)
+			hr.Status = hc.HealthCheck(tctx)
+			cancel()
+		} else {
+			hr.Status = HealthStatus{Status: StatusOK}
+		}
+		results = append(results, hr)
+	}
+	return results
+}
+
+// AggregateHealth returns the worst status across all plugins.
+func (r *Registry) AggregateHealth(ctx context.Context, timeout time.Duration) (HealthStatus, []HealthResult) {
+	results := r.CheckHealth(ctx, timeout)
+	agg := HealthStatus{Status: StatusOK}
+	var msgs []string
+	for _, hr := range results {
+		if worse(hr.Status.Status, agg.Status) {
+			agg.Status = hr.Status.Status
+		}
+		if hr.Status.Message != "" {
+			msgs = append(msgs, hr.Name+": "+hr.Status.Message)
+		}
+	}
+	if len(msgs) > 0 {
+		agg.Message = strings.Join(msgs, "; ")
+	}
+	return agg, results
+}
+
+func worse(a, b Status) bool {
+	return statusRank(a) > statusRank(b)
+}
+
+func statusRank(s Status) int {
+	switch s {
+	case StatusError:
+		return 2
+	case StatusDegraded:
+		return 1
+	default:
+		return 0
+	}
 }
 
 func (r *Registry) StopAll() {

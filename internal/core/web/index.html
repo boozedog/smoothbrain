@@ -47,6 +47,7 @@
     .pipeline-steps { list-style: disc; margin-left: 1.5rem; margin-top: 0.25rem; }
     .pipeline-steps li { margin-bottom: 0.15rem; }
     .run-error { color: hsl(var(--destructive)); }
+    .health-msg { color: hsl(var(--muted-foreground)); font-size: 0.85em; margin-left: 0.5rem; }
     .empty { padding: 1rem; color: hsl(var(--muted-foreground)); }
 
     .payload-cell { font-size: 0.8rem; }
@@ -112,7 +113,7 @@
 
         <!-- Tab 2: System Status -->
         <li>
-          <div id="status-tab" hx-get="/api/status/html" hx-trigger="intersect once" hx-swap="innerHTML">
+          <div id="status-tab" hx-get="/api/status/html" hx-trigger="intersect once, every 10s" hx-swap="innerHTML">
             loading...
           </div>
         </li>
