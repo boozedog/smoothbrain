@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"log/slog"
 
-	"github.com/dmarx/smoothbrain/internal/plugin"
+	"github.com/boozedog/smoothbrain/internal/plugin"
 	"tailscale.com/tsnet"
 )
 

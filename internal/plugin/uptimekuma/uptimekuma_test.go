@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/dmarx/smoothbrain/internal/plugin"
+	"github.com/boozedog/smoothbrain/internal/plugin"
 )
 
 type mockBus struct{}

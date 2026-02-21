@@ -14,7 +14,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/dmarx/smoothbrain/internal/plugin"
+	"github.com/boozedog/smoothbrain/internal/plugin"
 )
 
 func TestVerifySignatureValid(t *testing.T) {

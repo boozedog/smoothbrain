@@ -8,9 +8,9 @@ import (
 	"maps"
 	"time"
 
-	"github.com/dmarx/smoothbrain/internal/config"
-	"github.com/dmarx/smoothbrain/internal/plugin"
-	"github.com/dmarx/smoothbrain/internal/store"
+	"github.com/boozedog/smoothbrain/internal/config"
+	"github.com/boozedog/smoothbrain/internal/plugin"
+	"github.com/boozedog/smoothbrain/internal/store"
 )
 
 type Router struct {

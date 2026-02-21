@@ -12,7 +12,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/dmarx/smoothbrain/internal/config"
+	"github.com/boozedog/smoothbrain/internal/config"
 	"github.com/go-webauthn/webauthn/protocol"
 	"github.com/go-webauthn/webauthn/webauthn"
 )

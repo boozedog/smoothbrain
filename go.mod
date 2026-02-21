@@ -1,4 +1,4 @@
-module github.com/dmarx/smoothbrain
+module github.com/boozedog/smoothbrain
 
 go 1.25.5
 

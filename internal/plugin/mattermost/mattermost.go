@@ -15,8 +15,8 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/boozedog/smoothbrain/internal/plugin"
 	"github.com/coder/websocket"
-	"github.com/dmarx/smoothbrain/internal/plugin"
 	"github.com/google/uuid"
 )
 

@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/dmarx/smoothbrain/internal/plugin"
+	"github.com/boozedog/smoothbrain/internal/plugin"
 )
 
 func dailyNotePath(t time.Time) string {
@@ -113,7 +113,11 @@ func (p *Plugin) writeLog(_ context.Context, event plugin.Event, _ map[string]an
 	location, _ := event.Payload["location"].(string)
 
 	// Find the vehicle note file.
-	pattern := filepath.Join(p.cfg.VaultPath, "vehicles", vehicle+".md")
+	vehicleDir := filepath.Clean(filepath.Join(p.cfg.VaultPath, "vehicles"))
+	pattern := filepath.Clean(filepath.Join(vehicleDir, vehicle+".md"))
+	if !strings.HasPrefix(pattern, vehicleDir+string(filepath.Separator)) {
+		return event, fmt.Errorf("obsidian write_log: vehicle escapes vault")
+	}
 	matches, _ := filepath.Glob(pattern)
 	if len(matches) == 0 {
 		return event, fmt.Errorf("obsidian write_log: vehicle note not found: %s", vehicle)
