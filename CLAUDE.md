@@ -27,7 +27,7 @@ internal/
     obsidian/                    Vault indexing, note/link/log writing
     tailscale/                   Health check wrapper for tsnet
     td/                          td webhook source
-    twitter/                     Twitter/X plugin (not registered in main.go)
+    twitter/                     Twitter/X plugin (fetch_tweet transform)
     uptimekuma/                  Uptime Kuma webhook source
     webmd/                       URL-to-markdown fetcher
     xai/                         xAI/Grok LLM transform
