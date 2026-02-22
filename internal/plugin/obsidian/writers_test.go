@@ -236,7 +236,7 @@ func TestSaveLink_CreatesNote(t *testing.T) {
 		Payload: map[string]any{
 			"url":          "https://example.com/article",
 			"title":        "Example Article",
-			"response":      "A great article about testing.",
+			"response":     "A great article about testing.",
 			"file_content": "Full article content here.",
 		},
 	}
@@ -312,7 +312,7 @@ func TestSaveLink_TweetMetadata(t *testing.T) {
 		Payload: map[string]any{
 			"url":             "https://x.com/user/status/123",
 			"title":           "A tweet",
-			"response":         "Tweet summary",
+			"response":        "Tweet summary",
 			"tweet_id":        "123",
 			"author_name":     "Test User",
 			"author_username": "testuser",

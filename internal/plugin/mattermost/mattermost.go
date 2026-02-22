@@ -42,7 +42,7 @@ type Plugin struct {
 	wsConnected atomic.Bool
 
 	// Command dispatch.
-	commands     []plugin.CommandInfo
+	commands          []plugin.CommandInfo
 	workspaceChannels map[string]bool
 }
 
