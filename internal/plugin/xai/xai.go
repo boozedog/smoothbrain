@@ -135,7 +135,7 @@ func (p *Plugin) summarize(ctx context.Context, event plugin.Event, params map[s
 		return event, fmt.Errorf("xai: no choices in response")
 	}
 
-	event.Payload["summary"] = chatResp.Choices[0].Message.Content
+	event.Payload["response"] = chatResp.Choices[0].Message.Content
 	p.log.Info("xai summarize complete", "event_id", event.ID)
 	return event, nil
 }

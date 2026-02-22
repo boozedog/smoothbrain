@@ -66,7 +66,7 @@ func (p *Plugin) writeNote(_ context.Context, event plugin.Event, _ map[string]a
 		p.log.Warn("re-index after write_note failed", "error", err)
 	}
 
-	event.Payload["summary"] = fmt.Sprintf("Added diary entry to %s", relPath)
+	event.Payload["response"] = fmt.Sprintf("Added diary entry to %s", relPath)
 	return event, nil
 }
 
@@ -99,7 +99,7 @@ func (p *Plugin) writeLink(_ context.Context, event plugin.Event, _ map[string]a
 		p.log.Warn("re-index after write_link failed", "error", err)
 	}
 
-	event.Payload["summary"] = fmt.Sprintf("Added link [[%s]] to %s", msg, relPath)
+	event.Payload["response"] = fmt.Sprintf("Added link [[%s]] to %s", msg, relPath)
 	return event, nil
 }
 
@@ -148,7 +148,7 @@ func (p *Plugin) writeLog(_ context.Context, event plugin.Event, _ map[string]an
 		p.log.Warn("re-index after write_log failed", "error", err)
 	}
 
-	event.Payload["summary"] = fmt.Sprintf("Added maintenance log entry for %s", vehicle)
+	event.Payload["response"] = fmt.Sprintf("Added maintenance log entry for %s", vehicle)
 	return event, nil
 }
 
@@ -269,7 +269,7 @@ func (p *Plugin) saveLink(_ context.Context, event plugin.Event, _ map[string]an
 		return event, fmt.Errorf("obsidian save_link: missing url")
 	}
 
-	summary, _ := event.Payload["summary"].(string)
+	response, _ := event.Payload["response"].(string)
 	fileContent, _ := event.Payload["file_content"].(string)
 	title, _ := event.Payload["title"].(string)
 	if title == "" {
@@ -322,8 +322,8 @@ func (p *Plugin) saveLink(_ context.Context, event plugin.Event, _ map[string]an
 	// Build note body.
 	var body strings.Builder
 	body.WriteString(fm.String())
-	if summary != "" {
-		fmt.Fprintf(&body, "\n## Summary\n\n%s\n", summary)
+	if response != "" {
+		fmt.Fprintf(&body, "\n## Summary\n\n%s\n", response)
 	}
 	if fileContent != "" {
 		fmt.Fprintf(&body, "\n## Content\n\n%s\n", fileContent)
@@ -396,10 +396,10 @@ func (p *Plugin) saveLink(_ context.Context, event plugin.Event, _ map[string]an
 	}
 
 	savedMsg := fmt.Sprintf("Saved link: [%s](%s) → [[%s]]", title, linkURL, strings.TrimSuffix(noteRelPath, ".md"))
-	if summary != "" {
-		savedMsg = fmt.Sprintf("%s\n\n%s", savedMsg, summary)
+	if response != "" {
+		savedMsg = fmt.Sprintf("%s\n\n%s", savedMsg, response)
 	}
-	event.Payload["summary"] = savedMsg
+	event.Payload["response"] = savedMsg
 	return event, nil
 }
 

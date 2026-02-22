@@ -45,14 +45,28 @@ func TestBuildWSURL_TrailingSlash(t *testing.T) {
 func TestFormatMessage_Summary(t *testing.T) {
 	ev := plugin.Event{
 		Source:  "test-source",
-		Payload: map[string]any{"summary": "something happened"},
+		Payload: map[string]any{"response": "something happened"},
 	}
-	got := formatMessage(ev)
+	got := formatMessage(ev, "other-sink")
 	if !strings.Contains(got, "**[test-source]**") {
 		t.Errorf("message = %q, want it to contain source", got)
 	}
 	if !strings.Contains(got, "something happened") {
 		t.Errorf("message = %q, want it to contain summary", got)
+	}
+}
+
+func TestFormatMessage_Summary_SameSourceSink(t *testing.T) {
+	ev := plugin.Event{
+		Source:  "mattermost",
+		Payload: map[string]any{"response": "something happened"},
+	}
+	got := formatMessage(ev, "mattermost")
+	if strings.Contains(got, "**[") {
+		t.Errorf("message = %q, should not contain source tag when source=sink", got)
+	}
+	if got != "something happened" {
+		t.Errorf("message = %q, want %q", got, "something happened")
 	}
 }
 
@@ -62,7 +76,7 @@ func TestFormatMessage_NoSummary(t *testing.T) {
 		Type:    "alert",
 		Payload: map[string]any{"key": "value"},
 	}
-	got := formatMessage(ev)
+	got := formatMessage(ev, "mattermost")
 	if !strings.Contains(got, "```json") {
 		t.Errorf("message = %q, want it to contain JSON block", got)
 	}
@@ -153,6 +167,31 @@ func (b *captureBus) get(i int) plugin.Event {
 func makeWSPostedMessage(userID, channelType, message string) []byte {
 	post := map[string]any{
 		"id":         "post123",
+		"message":    message,
+		"channel_id": "chan123",
+		"user_id":    userID,
+		"root_id":    "",
+	}
+	postJSON, _ := json.Marshal(post)
+	ev := map[string]any{
+		"event": "posted",
+		"data": map[string]any{
+			"post":         string(postJSON),
+			"channel_type": channelType,
+			"sender_name":  "testuser",
+		},
+		"broadcast": map[string]any{
+			"channel_id": "chan123",
+		},
+	}
+	data, _ := json.Marshal(ev)
+	return data
+}
+
+func makeWSSystemPost(userID, channelType, postType, message string) []byte {
+	post := map[string]any{
+		"id":         "post123",
+		"type":       postType,
 		"message":    message,
 		"channel_id": "chan123",
 		"user_id":    userID,
@@ -305,7 +344,7 @@ func TestHandleEvent_NoChannel(t *testing.T) {
 	ev := plugin.Event{
 		Source:  "test",
 		Type:    "alert",
-		Payload: map[string]any{"summary": "something"},
+		Payload: map[string]any{"response": "something"},
 	}
 
 	err := p.HandleEvent(context.Background(), ev)
@@ -340,7 +379,7 @@ func TestHandleEvent_Success(t *testing.T) {
 		ID:      "ev1",
 		Source:  "test",
 		Type:    "alert",
-		Payload: map[string]any{"channel": "chan123", "summary": "hello"},
+		Payload: map[string]any{"channel": "chan123", "response": "hello"},
 	}
 
 	err := p.HandleEvent(context.Background(), ev)
@@ -377,10 +416,10 @@ func TestHandleEvent_ThreadReply(t *testing.T) {
 		Source: "test",
 		Type:   "reply",
 		Payload: map[string]any{
-			"channel": "chan123",
-			"post_id": "post456",
-			"root_id": "root789",
-			"summary": "reply text",
+			"channel":  "chan123",
+			"post_id":  "post456",
+			"root_id":  "root789",
+			"response": "reply text",
 		},
 	}
 
@@ -406,7 +445,7 @@ func TestHandleEvent_APIError(t *testing.T) {
 
 	ev := plugin.Event{
 		Source:  "test",
-		Payload: map[string]any{"channel": "chan123", "summary": "hello"},
+		Payload: map[string]any{"channel": "chan123", "response": "hello"},
 	}
 
 	err := p.HandleEvent(context.Background(), ev)
@@ -599,18 +638,18 @@ func TestHandleWSMessage_MixedURLsAndTweets(t *testing.T) {
 	}
 }
 
-func TestBuildHelpText_HidesHiddenCommands(t *testing.T) {
+func TestBuildHelpText_OnlyRegisteredCommands(t *testing.T) {
 	p := New(discardLogger())
 	p.commands = []plugin.CommandInfo{
 		{Name: "ask", Description: "Ask a question"},
-		{Name: "autolink", Description: "Auto-detected link", Hidden: true},
+		{Name: "md", Description: "Fetch markdown"},
 	}
 	got := p.buildHelpText()
 	if !strings.Contains(got, "ask") {
 		t.Errorf("help text missing 'ask': %q", got)
 	}
-	if strings.Contains(got, "autolink") {
-		t.Errorf("help text should not contain hidden 'autolink': %q", got)
+	if !strings.Contains(got, "md") {
+		t.Errorf("help text missing 'md': %q", got)
 	}
 }
 
@@ -651,5 +690,167 @@ func TestHandleWSMessage_URLInKnownCommand(t *testing.T) {
 	msg, _ := ev.Payload["message"].(string)
 	if msg != "https://example.com" {
 		t.Errorf("message = %q, want %q", msg, "https://example.com")
+	}
+}
+
+// --- Workspace channel tests ---
+
+func TestWorkspaceChannel_EmitsChat(t *testing.T) {
+	p, bus := newTestWSPlugin(t, acceptAllHandler)
+	p.SetWorkspaceChannels([]string{"chan123"})
+
+	data := makeWSPostedMessage("user456", "P", "what is the meaning of life")
+	p.handleWSMessage(data)
+
+	if bus.len() != 1 {
+		t.Fatalf("expected 1 event, got %d", bus.len())
+	}
+	ev := bus.get(0)
+	if ev.Type != "auto-chat" {
+		t.Errorf("Type = %q, want %q", ev.Type, "auto-chat")
+	}
+	if ev.Source != "mattermost" {
+		t.Errorf("Source = %q, want %q", ev.Source, "mattermost")
+	}
+	msg, _ := ev.Payload["message"].(string)
+	if msg != "what is the meaning of life" {
+		t.Errorf("message = %q, want %q", msg, "what is the meaning of life")
+	}
+	chID, _ := ev.Payload["channel_id"].(string)
+	if chID != "chan123" {
+		t.Errorf("channel_id = %q, want %q", chID, "chan123")
+	}
+}
+
+func TestWorkspaceChannel_SkipsMentionCheck(t *testing.T) {
+	p, bus := newTestWSPlugin(t, acceptAllHandler)
+	p.SetWorkspaceChannels([]string{"chan123"})
+
+	// Message in open channel without @mention — normally skipped, but workspace channel processes it.
+	data := makeWSPostedMessage("user456", "O", "hello without mention")
+	p.handleWSMessage(data)
+
+	if bus.len() != 1 {
+		t.Fatalf("expected 1 event in workspace channel without mention, got %d", bus.len())
+	}
+	ev := bus.get(0)
+	if ev.Type != "auto-chat" {
+		t.Errorf("Type = %q, want %q", ev.Type, "auto-chat")
+	}
+}
+
+func TestWorkspaceChannel_StripsAtMention(t *testing.T) {
+	p, bus := newTestWSPlugin(t, acceptAllHandler)
+	p.SetWorkspaceChannels([]string{"chan123"})
+
+	data := makeWSPostedMessage("user456", "P", "@mybot how are you")
+	p.handleWSMessage(data)
+
+	if bus.len() != 1 {
+		t.Fatalf("expected 1 event, got %d", bus.len())
+	}
+	msg, _ := bus.get(0).Payload["message"].(string)
+	if msg != "how are you" {
+		t.Errorf("message = %q, want %q (should strip @mention)", msg, "how are you")
+	}
+}
+
+func TestWorkspaceChannel_IgnoresEmpty(t *testing.T) {
+	p, bus := newTestWSPlugin(t, acceptAllHandler)
+	p.SetWorkspaceChannels([]string{"chan123"})
+
+	// Message that is just @mention — becomes empty after stripping.
+	data := makeWSPostedMessage("user456", "P", "@mybot")
+	p.handleWSMessage(data)
+
+	if bus.len() != 0 {
+		t.Errorf("expected 0 events for empty workspace channel message, got %d", bus.len())
+	}
+}
+
+func TestWorkspaceChannel_NotWorkspaceChannel(t *testing.T) {
+	p, bus := newTestWSPlugin(t, acceptAllHandler)
+	p.SetWorkspaceChannels([]string{"other-channel"})
+
+	// Message in chan123 which is not a workspace channel; no @mention, not a DM.
+	data := makeWSPostedMessage("user456", "O", "hello everyone")
+	p.handleWSMessage(data)
+
+	if bus.len() != 0 {
+		t.Errorf("expected 0 events for non-workspace-channel without mention, got %d", bus.len())
+	}
+}
+
+func TestSystemPost_Ignored(t *testing.T) {
+	p, bus := newTestWSPlugin(t, acceptAllHandler)
+	p.SetWorkspaceChannels([]string{"chan123"})
+
+	// System post (channel rename) should be ignored even in workspace channel.
+	data := makeWSSystemPost("user456", "O", "system_displayname_change", "@boozedog updated the channel display name")
+	p.handleWSMessage(data)
+
+	if bus.len() != 0 {
+		t.Errorf("expected 0 events for system post, got %d", bus.len())
+	}
+}
+
+func TestSystemPost_IgnoredInDM(t *testing.T) {
+	p, bus := newTestWSPlugin(t, acceptAllHandler)
+
+	// System post in a DM should also be ignored.
+	data := makeWSSystemPost("user456", "D", "system_join_channel", "user joined")
+	p.handleWSMessage(data)
+
+	if bus.len() != 0 {
+		t.Errorf("expected 0 events for system post in DM, got %d", bus.len())
+	}
+}
+
+func TestHandleWSMessage_PrivateChannel_CommandParsing(t *testing.T) {
+	p, bus := newTestWSPlugin(t, acceptAllHandler)
+
+	// Private channel message without @mention — should still parse commands.
+	data := makeWSPostedMessage("user456", "P", "ask how are you")
+	p.handleWSMessage(data)
+
+	if bus.len() != 1 {
+		t.Fatalf("expected 1 event for private channel command, got %d", bus.len())
+	}
+	ev := bus.get(0)
+	if ev.Type != "ask" {
+		t.Errorf("Type = %q, want %q", ev.Type, "ask")
+	}
+	msg, _ := ev.Payload["message"].(string)
+	if msg != "how are you" {
+		t.Errorf("message = %q, want %q", msg, "how are you")
+	}
+}
+
+func TestHandleWSMessage_PrivateChannel_NonAutoNonMention(t *testing.T) {
+	p, bus := newTestWSPlugin(t, acceptAllHandler)
+
+	// Private channel without @mention and not a workspace channel — should still respond (command mode).
+	data := makeWSPostedMessage("user456", "P", "help")
+	p.handleWSMessage(data)
+
+	// "help" is handled inline (not emitted as event, but a post is sent).
+	// The key point is it doesn't get dropped by the gate.
+	// Since "help" sends a post but doesn't emit an event, bus should be empty.
+	if bus.len() != 0 {
+		t.Errorf("expected 0 bus events for help command, got %d", bus.len())
+	}
+}
+
+func TestSetWorkspaceChannels(t *testing.T) {
+	p := New(discardLogger())
+	p.SetWorkspaceChannels([]string{"chan-a", "chan-b"})
+	if !p.isWorkspaceChannel("chan-a") {
+		t.Error("isWorkspaceChannel(\"chan-a\") = false, want true")
+	}
+	if !p.isWorkspaceChannel("chan-b") {
+		t.Error("isWorkspaceChannel(\"chan-b\") = false, want true")
+	}
+	if p.isWorkspaceChannel("chan-c") {
+		t.Error("isWorkspaceChannel(\"chan-c\") = true, want false")
 	}
 }

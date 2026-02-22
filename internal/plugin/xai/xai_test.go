@@ -88,9 +88,9 @@ func TestXai_Summarize_Success(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	got, ok := result.Payload["summary"].(string)
+	got, ok := result.Payload["response"].(string)
 	if !ok || got != "Test summary" {
-		t.Errorf("summary = %q, want %q", got, "Test summary")
+		t.Errorf("response = %q, want %q", got, "Test summary")
 	}
 }
 

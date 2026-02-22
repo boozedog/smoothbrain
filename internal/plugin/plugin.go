@@ -41,7 +41,6 @@ type Transform interface {
 type CommandInfo struct {
 	Name        string
 	Description string
-	Hidden      bool
 }
 
 // CommandAware is implemented by plugins that accept a list of routable commands.
@@ -64,6 +63,12 @@ type WebhookSource interface {
 	RegisterWebhook(reg WebhookRegistrar)
 }
 
+// WorkspaceChannelProvider is implemented by plugins that map channels
+// to workspaces (e.g. auto-chat without requiring @mention).
+type WorkspaceChannelProvider interface {
+	WorkspaceChannels() []string
+}
+
 type Status string
 
 const (
@@ -81,3 +86,11 @@ type HealthStatus struct {
 type HealthChecker interface {
 	HealthCheck(ctx context.Context) HealthStatus
 }
+
+// AccessDeniedError is returned by plugins when an event fails access control.
+// The router logs these but does not deliver error messages back to the sink.
+type AccessDeniedError struct {
+	Reason string
+}
+
+func (e *AccessDeniedError) Error() string { return e.Reason }

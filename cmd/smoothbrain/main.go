@@ -61,6 +61,7 @@ func main() {
 		Level:      level,
 		TimeFormat: time.TimeOnly,
 	}), logBuf))
+	slog.SetDefault(log)
 	log.Info("config loaded", "http", cfg.HTTP.Address, "database", cfg.Database, "log_level", level.String())
 
 	db, err := store.Open(cfg.Database)
@@ -89,13 +90,13 @@ func main() {
 	}
 
 	// Build command list from routes and pass to command-aware plugins.
+	// Events with "auto" prefix are system-triggered, not user commands.
 	cmdsBySource := make(map[string][]plugin.CommandInfo)
 	for _, r := range cfg.Routes {
-		if r.Event != "" {
+		if r.Event != "" && !strings.HasPrefix(r.Event, "auto") {
 			cmdsBySource[r.Source] = append(cmdsBySource[r.Source], plugin.CommandInfo{
 				Name:        r.Event,
 				Description: r.Description,
-				Hidden:      strings.HasPrefix(r.Event, "autolink"),
 			})
 		}
 	}
@@ -103,6 +104,20 @@ func main() {
 		if p, ok := registry.Get(source); ok {
 			if ca, ok := p.(plugin.CommandAware); ok {
 				ca.SetCommands(cmds)
+			}
+		}
+	}
+
+	// Collect workspace channels and inject into Mattermost for auto-chat mode.
+	if p, ok := registry.Get("claudecode"); ok {
+		if wcp, ok := p.(plugin.WorkspaceChannelProvider); ok {
+			if channels := wcp.WorkspaceChannels(); len(channels) > 0 {
+				if mp, ok := registry.Get("mattermost"); ok {
+					if mm, ok := mp.(*mattermost.Plugin); ok {
+						mm.SetWorkspaceChannels(channels)
+						log.Info("workspace channels configured", "count", len(channels))
+					}
+				}
 			}
 		}
 	}

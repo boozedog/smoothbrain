@@ -3,6 +3,7 @@ package core
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"maps"
@@ -121,7 +122,10 @@ func (r *Router) executeRoute(route config.RouteConfig, event plugin.Event) {
 				DurationMs: elapsed,
 				Error:      err.Error(),
 			})
-			r.deliverError(ctx, route, current, err.Error())
+			// Access-denied errors are silently dropped — don't post back to the channel.
+			if !errors.As(err, new(*plugin.AccessDeniedError)) {
+				r.deliverError(ctx, route, current, err.Error())
+			}
 			r.finishRun(runID, startedAt, "failed", err.Error(), steps)
 			return
 		}
@@ -193,7 +197,7 @@ func (r *Router) deliverError(ctx context.Context, route config.RouteConfig, eve
 	if !ok {
 		return
 	}
-	event.Payload["summary"] = fmt.Sprintf("**Error:** %s", errMsg)
+	event.Payload["response"] = fmt.Sprintf("**Error:** %s", errMsg)
 	maps.Copy(event.Payload, route.Sink.Params)
 	if err := sink.HandleEvent(ctx, event); err != nil {
 		r.log.Error("failed to deliver error to sink", "plugin", route.Sink.Plugin, "error", err)

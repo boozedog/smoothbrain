@@ -4,7 +4,7 @@ tmp_dir = "tmp"
 [build]
   pre_cmd = ["templ generate"]
   cmd = "go build -o ./tmp/smoothbrain ./cmd/smoothbrain"
-  entrypoint = ["./tmp/smoothbrain", "-config", "./examples/dev.json"]
+  entrypoint = ["./tmp/smoothbrain", "-config", "./secrets/config.json"]
   include_ext = ["go", "templ", "html"]
   include_dir = ["internal", "cmd"]
   exclude_dir = ["assets", "tmp", "vendor", "data", "testdata"]

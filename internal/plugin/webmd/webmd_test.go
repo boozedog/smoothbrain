@@ -112,8 +112,8 @@ func TestWebmd_Fetch_Success(t *testing.T) {
 	if got, ok := result.Payload["file_content"].(string); !ok || got != "# Hello" {
 		t.Errorf("file_content = %q, want %q", got, "# Hello")
 	}
-	if got, ok := result.Payload["summary"].(string); !ok || !strings.Contains(got, "example.com") {
-		t.Errorf("summary = %q, want it to contain %q", got, "example.com")
+	if got, ok := result.Payload["response"].(string); !ok || !strings.Contains(got, "example.com") {
+		t.Errorf("response = %q, want it to contain %q", got, "example.com")
 	}
 }
 

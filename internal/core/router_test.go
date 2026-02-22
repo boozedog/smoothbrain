@@ -261,9 +261,9 @@ func TestRouter_TransformError(t *testing.T) {
 	if len(sink.events) != 1 {
 		t.Fatalf("expected 1 error event delivered via deliverError, got %d", len(sink.events))
 	}
-	summary, _ := sink.events[0].Payload["summary"].(string)
-	if summary == "" {
-		t.Error("expected error summary in payload")
+	resp, _ := sink.events[0].Payload["response"].(string)
+	if resp == "" {
+		t.Error("expected error response in payload")
 	}
 }
 

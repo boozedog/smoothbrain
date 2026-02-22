@@ -62,7 +62,7 @@ func TestSearch_EmptyIndex(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	summary, _ := result.Payload["summary"].(string)
+	summary, _ := result.Payload["response"].(string)
 	if !strings.Contains(summary, "No results") {
 		t.Errorf("summary %q should contain %q", summary, "No results")
 	}
@@ -102,7 +102,7 @@ func TestRead_ValidFile(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	summary, _ := result.Payload["summary"].(string)
+	summary, _ := result.Payload["response"].(string)
 	if !strings.Contains(summary, "# Hello") {
 		t.Errorf("summary %q should contain file content", summary)
 	}
@@ -121,7 +121,7 @@ func TestRead_AutoAppendsMd(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	summary, _ := result.Payload["summary"].(string)
+	summary, _ := result.Payload["response"].(string)
 	if !strings.Contains(summary, "# Hello") {
 		t.Errorf("summary %q should contain file content after auto-appending .md", summary)
 	}

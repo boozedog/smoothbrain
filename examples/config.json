@@ -12,9 +12,45 @@
     "mattermost": {
       "url": "https://mattermost.example.com",
       "token_file": "/run/secrets/mattermost-token"
+    },
+    "claudecode": {
+      "model": "sonnet",
+      "permission_mode": "plan",
+      "session_ttl": "1h",
+      "max_turns": 3,
+      "workspaces": {
+        "myproject": {
+          "path": "/path/to/project",
+          "tools": "Bash,Read,Write,Edit,Glob,Grep",
+          "append_system_prompt": "Be concise."
+        }
+      },
+      "sources": {
+        "mattermost": {
+          "allowed_users": ["USER_ID"],
+          "channel_workspaces": {
+            "CHANNEL_ID_1": "myproject"
+          }
+        }
+      }
     }
   },
   "routes": [
+    {
+      "name": "mm-claude",
+      "source": "mattermost",
+      "event": "message",
+      "description": "Chat with Claude Code via Mattermost",
+      "pipeline": [
+        {
+          "plugin": "claudecode",
+          "action": "chat"
+        }
+      ],
+      "sink": {
+        "plugin": "mattermost"
+      }
+    },
     {
       "name": "uptime-kuma-alerts",
       "source": "uptime-kuma",

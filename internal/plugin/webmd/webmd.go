@@ -109,7 +109,7 @@ func (p *Plugin) fetch(ctx context.Context, event plugin.Event) (plugin.Event, e
 		filename = "page.md"
 	}
 
-	event.Payload["summary"] = fmt.Sprintf("Fetched [%s](%s)", rawURL, rawURL)
+	event.Payload["response"] = fmt.Sprintf("Fetched [%s](%s)", rawURL, rawURL)
 	event.Payload["file_content"] = md
 	event.Payload["file_name"] = filename
 

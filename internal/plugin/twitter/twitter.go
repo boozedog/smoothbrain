@@ -375,7 +375,7 @@ func (p *Plugin) fetchTweet(ctx context.Context, event plugin.Event) (plugin.Eve
 	event.Payload["author_username"] = author.Username
 	event.Payload["tweet_url"] = fmt.Sprintf("https://x.com/%s/status/%s", author.Username, tweetID)
 	event.Payload["embedded_urls"] = embeddedURLs
-	event.Payload["summary"] = fmt.Sprintf("@%s: %s", author.Username, result.Data.Text)
+	event.Payload["response"] = fmt.Sprintf("@%s: %s", author.Username, result.Data.Text)
 
 	return event, nil
 }

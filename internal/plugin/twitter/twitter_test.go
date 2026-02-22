@@ -109,8 +109,8 @@ func TestFetchTweet_Success(t *testing.T) {
 	if got := result.Payload["tweet_created_at"]; got != "2026-02-20T12:00:00.000Z" {
 		t.Errorf("tweet_created_at = %q, want %q", got, "2026-02-20T12:00:00.000Z")
 	}
-	if got := result.Payload["summary"]; got != "@testuser: Hello world from X!" {
-		t.Errorf("summary = %q, want %q", got, "@testuser: Hello world from X!")
+	if got := result.Payload["response"]; got != "@testuser: Hello world from X!" {
+		t.Errorf("response = %q, want %q", got, "@testuser: Hello world from X!")
 	}
 
 	// Check metrics.

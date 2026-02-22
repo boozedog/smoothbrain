@@ -42,7 +42,8 @@ type Plugin struct {
 	wsConnected atomic.Bool
 
 	// Command dispatch.
-	commands []plugin.CommandInfo
+	commands     []plugin.CommandInfo
+	workspaceChannels map[string]bool
 }
 
 func New(log *slog.Logger) *Plugin {
@@ -251,6 +252,7 @@ type wsBroadcast struct {
 
 type wsPost struct {
 	ID        string `json:"id"`
+	Type      string `json:"type"` // empty for user messages, e.g. "system_displayname_change" for system posts
 	Message   string `json:"message"`
 	ChannelID string `json:"channel_id"`
 	UserID    string `json:"user_id"`
@@ -260,6 +262,15 @@ type wsPost struct {
 // SetCommands provides the plugin with the list of routable commands.
 func (p *Plugin) SetCommands(commands []plugin.CommandInfo) {
 	p.commands = commands
+}
+
+// SetWorkspaceChannels injects the set of channels mapped to workspaces (auto-chat mode).
+func (p *Plugin) SetWorkspaceChannels(channels []string) {
+	m := make(map[string]bool, len(channels))
+	for _, ch := range channels {
+		m[ch] = true
+	}
+	p.workspaceChannels = m
 }
 
 func (p *Plugin) handleWSMessage(data []byte) {
@@ -282,10 +293,46 @@ func (p *Plugin) handleWSMessage(data []byte) {
 		return
 	}
 
-	// Only respond to DMs or @mentions.
+	// Ignore system posts (channel rename, user join/leave, etc.).
+	if post.Type != "" {
+		return
+	}
+
+	// Workspace channel: all messages go to Claude Code chat (no command prefix needed).
+	if p.isWorkspaceChannel(post.ChannelID) {
+		msg := post.Message
+		msg = strings.ReplaceAll(msg, "@"+p.botName, "")
+		msg = strings.TrimSpace(msg)
+		if msg == "" {
+			return
+		}
+		if err := p.addReaction(post.ID, "hourglass_flowing_sand"); err != nil {
+			p.log.Error("mattermost: add reaction", "error", err)
+		}
+		p.bus.Emit(plugin.Event{
+			ID:        uuid.NewString(),
+			Source:    "mattermost",
+			Type:      "auto-chat",
+			Timestamp: time.Now(),
+			Payload: map[string]any{
+				"channel":      post.ChannelID,
+				"channel_id":   post.ChannelID,
+				"post_id":      post.ID,
+				"root_id":      post.RootID,
+				"message":      msg,
+				"user_id":      post.UserID,
+				"sender_name":  ev.Data.SenderName,
+				"channel_type": ev.Data.ChannelType,
+			},
+		})
+		return
+	}
+
+	// Only respond to DMs, private channels, or @mentions.
+	isPrivate := ev.Data.ChannelType == "P"
 	isDM := ev.Data.ChannelType == "D"
 	isMention := strings.Contains(post.Message, "@"+p.botName)
-	if !isDM && !isMention {
+	if !isDM && !isPrivate && !isMention {
 		return
 	}
 
@@ -397,13 +444,14 @@ func (p *Plugin) isKnownCommand(name string) bool {
 	return false
 }
 
+func (p *Plugin) isWorkspaceChannel(channelID string) bool {
+	return p.workspaceChannels[channelID]
+}
+
 func (p *Plugin) buildHelpText() string {
 	var b strings.Builder
 	b.WriteString("**Available commands:**\n")
 	for _, c := range p.commands {
-		if c.Hidden {
-			continue
-		}
 		if c.Description != "" {
 			fmt.Fprintf(&b, "- `%s` — %s\n", c.Name, c.Description)
 		} else {
@@ -524,7 +572,7 @@ func (p *Plugin) HandleEvent(ctx context.Context, event plugin.Event) error {
 		return fmt.Errorf("mattermost: no channel in event payload")
 	}
 
-	message := formatMessage(event)
+	message := formatMessage(event, p.Name())
 
 	post := map[string]any{
 		"channel_id": channel,
@@ -648,8 +696,11 @@ func (p *Plugin) uploadFile(ctx context.Context, channelID, filename string, con
 	return result.FileInfos[0].ID, nil
 }
 
-func formatMessage(event plugin.Event) string {
-	if summary, ok := event.Payload["summary"].(string); ok {
+func formatMessage(event plugin.Event, sinkName string) string {
+	if summary, ok := event.Payload["response"].(string); ok {
+		if event.Source == sinkName {
+			return summary
+		}
 		return fmt.Sprintf("**[%s]** %s", event.Source, summary)
 	}
 

@@ -114,7 +114,7 @@ func (p *Plugin) handleWebhook(w http.ResponseWriter, r *http.Request) {
 	if err := json.Unmarshal(body, &payloadMap); err != nil {
 		payloadMap = map[string]any{"raw": string(body)}
 	}
-	payloadMap["summary"] = buildSummary(payload)
+	payloadMap["response"] = buildSummary(payload)
 
 	event := plugin.Event{
 		ID:        uuid.NewString(),

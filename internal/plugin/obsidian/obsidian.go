@@ -125,7 +125,7 @@ func (p *Plugin) search(_ context.Context, event plugin.Event, params map[string
 	}
 
 	if len(results) == 0 {
-		event.Payload["summary"] = "No results found."
+		event.Payload["response"] = "No results found."
 		return event, nil
 	}
 
@@ -133,7 +133,7 @@ func (p *Plugin) search(_ context.Context, event plugin.Event, params map[string
 	for i, r := range results {
 		fmt.Fprintf(&sb, "%d. **%s** (`%s`)\n   %s\n", i+1, r.Title, r.Path, r.Excerpt)
 	}
-	event.Payload["summary"] = sb.String()
+	event.Payload["response"] = sb.String()
 	return event, nil
 }
 
@@ -160,7 +160,7 @@ func (p *Plugin) read(_ context.Context, event plugin.Event, params map[string]a
 		return event, fmt.Errorf("obsidian read: %w", err)
 	}
 
-	event.Payload["summary"] = string(data)
+	event.Payload["response"] = string(data)
 	return event, nil
 }
 
@@ -211,7 +211,7 @@ func (p *Plugin) query(_ context.Context, event plugin.Event, params map[string]
 	}
 
 	if len(matches) == 0 {
-		event.Payload["summary"] = "No matching files found."
+		event.Payload["response"] = "No matching files found."
 		return event, nil
 	}
 
@@ -230,7 +230,7 @@ func (p *Plugin) query(_ context.Context, event plugin.Event, params map[string]
 		}
 		sb.WriteString("\n")
 	}
-	event.Payload["summary"] = sb.String()
+	event.Payload["response"] = sb.String()
 	return event, nil
 }
 
