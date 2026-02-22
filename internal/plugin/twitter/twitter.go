@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"regexp"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -16,6 +17,8 @@ import (
 	"github.com/boozedog/smoothbrain/internal/plugin"
 	"github.com/google/uuid"
 )
+
+var tweetURLPattern = regexp.MustCompile(`(?:twitter\.com|x\.com)/\w+/status/(\d+)`)
 
 type Config struct {
 	BearerToken     string `json:"bearer_token"`
@@ -60,8 +63,8 @@ func (p *Plugin) Init(cfg json.RawMessage) error {
 		p.bearerToken = strings.TrimSpace(string(token))
 	}
 
-	if p.cfg.ListID == "" {
-		p.log.Warn("twitter: no list_id configured, plugin will be idle")
+	if p.cfg.ListID == "" && p.bearerToken == "" {
+		p.log.Warn("twitter: no list_id or bearer_token configured, plugin will be idle")
 	}
 
 	dur, err := time.ParseDuration(p.cfg.PollInterval)
@@ -218,8 +221,11 @@ func (p *Plugin) fetch(ctx context.Context, bus plugin.EventBus, sinceID string)
 }
 
 func (p *Plugin) HealthCheck(_ context.Context) plugin.HealthStatus {
-	if p.bearerToken == "" || p.cfg.ListID == "" {
+	if p.bearerToken == "" {
 		return plugin.HealthStatus{Status: plugin.StatusOK, Message: "not configured"}
+	}
+	if p.cfg.ListID == "" {
+		return plugin.HealthStatus{Status: plugin.StatusOK, Message: "transform-only mode"}
 	}
 	lastNano := p.lastFetchTime.Load()
 	if lastNano == 0 {
@@ -273,4 +279,129 @@ type meta struct {
 	OldestID    string `json:"oldest_id"`
 	ResultCount int    `json:"result_count"`
 	NextToken   string `json:"next_token"`
+}
+
+// Transform enriches an event by fetching tweet data from the X API.
+func (p *Plugin) Transform(ctx context.Context, event plugin.Event, action string, params map[string]any) (plugin.Event, error) {
+	switch action {
+	case "fetch_tweet":
+		return p.fetchTweet(ctx, event)
+	default:
+		return event, fmt.Errorf("twitter: unknown action %q", action)
+	}
+}
+
+func (p *Plugin) fetchTweet(ctx context.Context, event plugin.Event) (plugin.Event, error) {
+	if p.bearerToken == "" {
+		p.log.Warn("twitter: no bearer_token configured, skipping fetch_tweet")
+		return event, nil
+	}
+
+	// Extract tweet ID from payload.
+	tweetID, _ := event.Payload["tweet_id"].(string)
+	if tweetID == "" {
+		if rawURL, _ := event.Payload["url"].(string); rawURL != "" {
+			if m := tweetURLPattern.FindStringSubmatch(rawURL); len(m) > 1 {
+				tweetID = m[1]
+			}
+		}
+	}
+	if tweetID == "" {
+		return event, fmt.Errorf("twitter: no tweet_id or recognizable tweet url in event payload")
+	}
+
+	params := url.Values{
+		"tweet.fields": {"created_at,public_metrics,entities"},
+		"user.fields":  {"username,name"},
+		"expansions":   {"author_id"},
+		"media.fields": {"url,preview_image_url"},
+	}
+	reqURL := fmt.Sprintf("https://api.x.com/2/tweets/%s?%s", tweetID, params.Encode())
+
+	req, err := http.NewRequestWithContext(ctx, "GET", reqURL, nil)
+	if err != nil {
+		return event, fmt.Errorf("twitter: build request: %w", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+p.bearerToken)
+
+	resp, err := p.client.Do(req)
+	if err != nil {
+		return event, fmt.Errorf("twitter: api request: %w", err)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	_ = resp.Body.Close()
+
+	if resp.StatusCode == http.StatusTooManyRequests {
+		p.log.Warn("twitter: rate limited on fetch_tweet, skipping", "tweet_id", tweetID)
+		return event, nil
+	}
+	if resp.StatusCode != http.StatusOK {
+		return event, fmt.Errorf("twitter: api error %d: %s", resp.StatusCode, string(body))
+	}
+
+	var result tweetResponse
+	if err := json.Unmarshal(body, &result); err != nil {
+		return event, fmt.Errorf("twitter: parse response: %w", err)
+	}
+
+	// Resolve author from includes.
+	var author user
+	for _, u := range result.Includes.Users {
+		if u.ID == result.Data.AuthorID {
+			author = u
+			break
+		}
+	}
+
+	// Collect embedded URLs from entities.
+	var embeddedURLs []string
+	if result.Data.Entities != nil {
+		for _, e := range result.Data.Entities.URLs {
+			if e.ExpandedURL != "" {
+				embeddedURLs = append(embeddedURLs, e.ExpandedURL)
+			}
+		}
+	}
+
+	event.Payload["tweet_text"] = result.Data.Text
+	event.Payload["tweet_created_at"] = result.Data.CreatedAt
+	event.Payload["tweet_metrics"] = map[string]any{
+		"like_count":       result.Data.PublicMetrics.LikeCount,
+		"retweet_count":    result.Data.PublicMetrics.RetweetCount,
+		"reply_count":      result.Data.PublicMetrics.ReplyCount,
+		"impression_count": result.Data.PublicMetrics.ImpressionCount,
+	}
+	event.Payload["author_name"] = author.Name
+	event.Payload["author_username"] = author.Username
+	event.Payload["tweet_url"] = fmt.Sprintf("https://x.com/%s/status/%s", author.Username, tweetID)
+	event.Payload["embedded_urls"] = embeddedURLs
+	event.Payload["summary"] = fmt.Sprintf("@%s: %s", author.Username, result.Data.Text)
+
+	return event, nil
+}
+
+// Single-tweet API response types.
+
+type tweetResponse struct {
+	Data     tweetData `json:"data"`
+	Includes includes  `json:"includes"`
+}
+
+type tweetData struct {
+	ID            string         `json:"id"`
+	Text          string         `json:"text"`
+	AuthorID      string         `json:"author_id"`
+	CreatedAt     string         `json:"created_at"`
+	PublicMetrics publicMetrics  `json:"public_metrics"`
+	Entities      *tweetEntities `json:"entities"`
+}
+
+type tweetEntities struct {
+	URLs []tweetURLEntity `json:"urls"`
+}
+
+type tweetURLEntity struct {
+	URL         string `json:"url"`
+	ExpandedURL string `json:"expanded_url"`
+	DisplayURL  string `json:"display_url"`
 }

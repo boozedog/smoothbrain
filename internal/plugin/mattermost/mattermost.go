@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/boozedog/smoothbrain/internal/plugin"
+	"github.com/boozedog/smoothbrain/internal/urldetect"
 	"github.com/coder/websocket"
 	"github.com/google/uuid"
 )
@@ -305,39 +306,86 @@ func (p *Plugin) handleWSMessage(data []byte) {
 	subcmd = strings.ToLower(subcmd)
 	rest = strings.TrimSpace(rest)
 
-	// Handle "help" or unknown commands.
-	if subcmd == "help" || !p.isKnownCommand(subcmd) {
-		helpText := p.buildHelpText()
-		if subcmd != "help" && subcmd != "" {
-			helpText = fmt.Sprintf("Unknown command `%s`.\n\n%s", subcmd, helpText)
-		}
-		if err := p.sendPost(post.ChannelID, "", helpText); err != nil {
+	// Handle "help" explicitly.
+	if subcmd == "help" {
+		if err := p.sendPost(post.ChannelID, "", p.buildHelpText()); err != nil {
 			p.log.Error("mattermost: send help", "error", err)
 		}
 		return
 	}
 
-	// Add thinking reaction for immediate feedback.
-	if err := p.addReaction(post.ID, "hourglass_flowing_sand"); err != nil {
-		p.log.Error("mattermost: add reaction", "error", err)
+	// Known command → emit event.
+	if p.isKnownCommand(subcmd) {
+		// Add thinking reaction for immediate feedback.
+		if err := p.addReaction(post.ID, "hourglass_flowing_sand"); err != nil {
+			p.log.Error("mattermost: add reaction", "error", err)
+		}
+
+		p.bus.Emit(plugin.Event{
+			ID:        uuid.NewString(),
+			Source:    "mattermost",
+			Type:      subcmd,
+			Timestamp: time.Now(),
+			Payload: map[string]any{
+				"channel":      post.ChannelID,
+				"channel_id":   post.ChannelID,
+				"post_id":      post.ID,
+				"root_id":      post.RootID,
+				"message":      rest,
+				"user_id":      post.UserID,
+				"sender_name":  ev.Data.SenderName,
+				"channel_type": ev.Data.ChannelType,
+			},
+		})
+		return
 	}
 
-	p.bus.Emit(plugin.Event{
-		ID:        uuid.NewString(),
-		Source:    "mattermost",
-		Type:      subcmd,
-		Timestamp: time.Now(),
-		Payload: map[string]any{
-			"channel":      post.ChannelID,
-			"channel_id":   post.ChannelID,
-			"post_id":      post.ID,
-			"root_id":      post.RootID,
-			"message":      rest,
-			"user_id":      post.UserID,
-			"sender_name":  ev.Data.SenderName,
-			"channel_type": ev.Data.ChannelType,
-		},
-	})
+	// Not a known command — try URL auto-detection on the full message.
+	urls := urldetect.Extract(msg)
+	if len(urls) > 0 {
+		// Add thinking reaction.
+		if err := p.addReaction(post.ID, "hourglass_flowing_sand"); err != nil {
+			p.log.Error("mattermost: add reaction", "error", err)
+		}
+		for _, u := range urls {
+			eventType := "autolink"
+			payload := map[string]any{
+				"channel":      post.ChannelID,
+				"channel_id":   post.ChannelID,
+				"post_id":      post.ID,
+				"root_id":      post.RootID,
+				"message":      u,
+				"url":          u,
+				"user_id":      post.UserID,
+				"sender_name":  ev.Data.SenderName,
+				"channel_type": ev.Data.ChannelType,
+			}
+			if urldetect.IsXURL(u) {
+				eventType = "autolink-tweet"
+				if tweetID := urldetect.ExtractTweetID(u); tweetID != "" {
+					payload["tweet_id"] = tweetID
+				}
+			}
+			p.log.Info("mattermost: autolink detected", "url", u, "type", eventType)
+			p.bus.Emit(plugin.Event{
+				ID:        uuid.NewString(),
+				Source:    "mattermost",
+				Type:      eventType,
+				Timestamp: time.Now(),
+				Payload:   payload,
+			})
+		}
+		return
+	}
+
+	// No URLs either — show help.
+	helpText := fmt.Sprintf("Unknown command `%s`.\n\n%s", subcmd, p.buildHelpText())
+	if subcmd == "" {
+		helpText = p.buildHelpText()
+	}
+	if err := p.sendPost(post.ChannelID, "", helpText); err != nil {
+		p.log.Error("mattermost: send help", "error", err)
+	}
 }
 
 func (p *Plugin) isKnownCommand(name string) bool {
@@ -353,6 +401,9 @@ func (p *Plugin) buildHelpText() string {
 	var b strings.Builder
 	b.WriteString("**Available commands:**\n")
 	for _, c := range p.commands {
+		if c.Hidden {
+			continue
+		}
 		if c.Description != "" {
 			fmt.Fprintf(&b, "- `%s` — %s\n", c.Name, c.Description)
 		} else {

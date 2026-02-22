@@ -41,6 +41,7 @@ type Transform interface {
 type CommandInfo struct {
 	Name        string
 	Description string
+	Hidden      bool
 }
 
 // CommandAware is implemented by plugins that accept a list of routable commands.

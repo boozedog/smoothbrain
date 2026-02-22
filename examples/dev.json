@@ -13,7 +13,8 @@
     "xai": {"model": "grok-4-1-fast-non-reasoning", "api_key": "$XAI_API_KEY"},
     "mattermost": {"url": "$MATTERMOST_URL", "token": "$MATTERMOST_TOKEN", "listen": true},
     "claudecode": {"binary": "/Users/david/.local/bin/claude"},
-    "obsidian": {"vault_path": "~/obsidian/smoothbrain"}
+    "obsidian": {"vault_path": "~/obsidian/smoothbrain"},
+    "twitter": {"bearer_token": "$X_BEARER_TOKEN"}
   },
   "routes": [
     {
@@ -34,11 +35,13 @@
     },
     {
       "name": "mattermost-webmd",
-      "description": "Fetch a URL as markdown",
+      "description": "Fetch and summarize a URL",
       "source": "mattermost",
       "event": "md",
+      "timeout": "120s",
       "pipeline": [
-        {"plugin": "webmd", "action": "fetch", "params": {}}
+        {"plugin": "webmd", "action": "fetch", "params": {}},
+        {"plugin": "xai", "action": "summarize", "params": {"prompt": "Summarize this article concisely. Only output the summary."}}
       ],
       "sink": {"plugin": "mattermost", "params": {}}
     },
@@ -94,6 +97,31 @@
       "event": "link",
       "pipeline": [
         {"plugin": "obsidian", "action": "write_link", "params": {}}
+      ],
+      "sink": {"plugin": "mattermost", "params": {}}
+    },
+    {
+      "name": "autolink-regular",
+      "source": "mattermost",
+      "event": "autolink",
+      "description": "Auto-detect URLs: fetch, summarize, save to vault",
+      "timeout": "120s",
+      "pipeline": [
+        {"plugin": "webmd", "action": "fetch"},
+        {"plugin": "xai", "action": "summarize", "params": {"prompt": "Summarize this article concisely in 2-4 sentences. Only output the summary."}},
+        {"plugin": "obsidian", "action": "save_link"}
+      ],
+      "sink": {"plugin": "mattermost", "params": {}}
+    },
+    {
+      "name": "autolink-tweet",
+      "source": "mattermost",
+      "event": "autolink-tweet",
+      "description": "Auto-detect X/Twitter URLs: fetch via API, save to vault",
+      "timeout": "60s",
+      "pipeline": [
+        {"plugin": "twitter", "action": "fetch_tweet"},
+        {"plugin": "obsidian", "action": "save_link"}
       ],
       "sink": {"plugin": "mattermost", "params": {}}
     }

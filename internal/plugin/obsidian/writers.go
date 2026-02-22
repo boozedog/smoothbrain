@@ -3,8 +3,10 @@ package obsidian
 import (
 	"context"
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 
@@ -167,7 +169,10 @@ func appendToSection(content, sectionName, line string) string {
 				continue
 			}
 			if inSection {
-				// Reached next section; insert before it.
+				// Trim trailing blank lines, then insert before next section.
+				for len(result) > 0 && strings.TrimSpace(result[len(result)-1]) == "" {
+					result = result[:len(result)-1]
+				}
 				result = append(result, line)
 				result = append(result, "")
 				inSection = false
@@ -177,8 +182,8 @@ func appendToSection(content, sectionName, line string) string {
 		// If we're at the last line and still in section, append.
 		if inSection && i == len(lines)-1 {
 			result = append(result, l)
-			if strings.TrimSpace(l) != "" {
-				result = append(result, "")
+			for len(result) > 0 && strings.TrimSpace(result[len(result)-1]) == "" {
+				result = result[:len(result)-1]
 			}
 			result = append(result, line)
 			inserted = true
@@ -256,6 +261,183 @@ func insertBefore(lines []string, idx int, line string) []string {
 	result = append(result, line)
 	result = append(result, lines[idx:]...)
 	return result
+}
+
+func (p *Plugin) saveLink(_ context.Context, event plugin.Event, _ map[string]any) (plugin.Event, error) {
+	linkURL, _ := event.Payload["url"].(string)
+	if linkURL == "" {
+		return event, fmt.Errorf("obsidian save_link: missing url")
+	}
+
+	summary, _ := event.Payload["summary"].(string)
+	fileContent, _ := event.Payload["file_content"].(string)
+	title, _ := event.Payload["title"].(string)
+	if title == "" {
+		title = linkURL
+	}
+
+	embeddedURLs, _ := event.Payload["embedded_urls"].([]any)
+	authorName, _ := event.Payload["author_name"].(string)
+	authorUsername, _ := event.Payload["author_username"].(string)
+	tweetID, _ := event.Payload["tweet_id"].(string)
+
+	now := time.Now()
+	dateStr := now.Format("2006-01-02")
+	yearStr := now.Format("2006")
+
+	// Build slug from title or URL hostname+path.
+	slugSource := title
+	if slugSource == linkURL {
+		if u, err := url.Parse(linkURL); err == nil {
+			slugSource = u.Hostname() + u.Path
+		}
+	}
+	slug := slugify(slugSource)
+
+	// Create note at links/YYYY/YYYY-MM-DD-slug.md.
+	noteRelDir := filepath.Join("links", yearStr)
+	noteRelPath := filepath.Join(noteRelDir, dateStr+"-"+slug+".md")
+	noteAbsDir := filepath.Join(p.cfg.VaultPath, noteRelDir)
+	noteAbsPath := filepath.Join(p.cfg.VaultPath, noteRelPath)
+
+	if err := os.MkdirAll(noteAbsDir, 0o750); err != nil {
+		return event, fmt.Errorf("obsidian save_link: mkdir: %w", err)
+	}
+
+	// Build frontmatter.
+	var fm strings.Builder
+	fm.WriteString("---\n")
+	fmt.Fprintf(&fm, "title: %s\n", escapeYAML(title))
+	fmt.Fprintf(&fm, "url: %s\n", linkURL)
+	fmt.Fprintf(&fm, "saved: %s\n", dateStr)
+	fm.WriteString("tags:\n  - web-clip\n")
+	if tweetID != "" {
+		fmt.Fprintf(&fm, "tweet_id: %s\n", tweetID)
+		if authorUsername != "" {
+			fmt.Fprintf(&fm, "author: \"@%s\"\n", authorUsername)
+		}
+	}
+	fm.WriteString("---\n")
+
+	// Build note body.
+	var body strings.Builder
+	body.WriteString(fm.String())
+	if summary != "" {
+		fmt.Fprintf(&body, "\n## Summary\n\n%s\n", summary)
+	}
+	if fileContent != "" {
+		fmt.Fprintf(&body, "\n## Content\n\n%s\n", fileContent)
+	}
+	displayTitle := title
+	if authorName != "" && tweetID != "" {
+		displayTitle = fmt.Sprintf("%s (@%s)", authorName, authorUsername)
+	}
+	fmt.Fprintf(&body, "\n## Source\n\n[%s](%s)\n", displayTitle, linkURL)
+
+	if err := atomicWrite(noteAbsPath, body.String()); err != nil {
+		return event, fmt.Errorf("obsidian save_link: write note: %w", err)
+	}
+
+	// Cross-reference in daily note.
+	dailyRel, err := p.ensureDailyNote(now)
+	if err != nil {
+		p.log.Warn("obsidian save_link: ensure daily note failed", "error", err)
+	} else {
+		dailyAbs := filepath.Join(p.cfg.VaultPath, dailyRel)
+		content, err := os.ReadFile(dailyAbs)
+		if err != nil {
+			p.log.Warn("obsidian save_link: read daily note failed", "error", err)
+		} else {
+			wikiLink := fmt.Sprintf("- [[%s]]", strings.TrimSuffix(noteRelPath, ".md"))
+			updated := appendToSection(string(content), "Links", wikiLink)
+			if err := atomicWrite(dailyAbs, updated); err != nil {
+				p.log.Warn("obsidian save_link: update daily note failed", "error", err)
+			}
+		}
+	}
+
+	// Re-emit embedded URLs (up to 5, skip tweet URLs to prevent recursion).
+	if len(embeddedURLs) > 0 && p.bus != nil {
+		emitted := 0
+		for _, raw := range embeddedURLs {
+			if emitted >= 5 {
+				break
+			}
+			u, ok := raw.(string)
+			if !ok || u == "" {
+				continue
+			}
+			if isTweetURL(u) {
+				continue
+			}
+			payload := map[string]any{
+				"message": u,
+				"url":     u,
+			}
+			// Carry over original event context fields.
+			for _, key := range []string{"channel", "channel_id", "post_id", "root_id", "user_id", "sender_name"} {
+				if v, ok := event.Payload[key]; ok {
+					payload[key] = v
+				}
+			}
+			p.bus.Emit(plugin.Event{
+				Source:    "mattermost",
+				Type:      "autolink",
+				Payload:   payload,
+				Timestamp: now,
+			})
+			emitted++
+		}
+	}
+
+	// Index the new file.
+	if err := p.IndexFile(noteRelPath); err != nil {
+		p.log.Warn("obsidian save_link: index failed", "error", err)
+	}
+
+	savedMsg := fmt.Sprintf("Saved link: [%s](%s) → [[%s]]", title, linkURL, strings.TrimSuffix(noteRelPath, ".md"))
+	if summary != "" {
+		savedMsg = fmt.Sprintf("%s\n\n%s", savedMsg, summary)
+	}
+	event.Payload["summary"] = savedMsg
+	return event, nil
+}
+
+// isTweetURL checks if a URL is a tweet status URL.
+func isTweetURL(u string) bool {
+	return (strings.Contains(u, "twitter.com/") || strings.Contains(u, "x.com/")) && strings.Contains(u, "/status/")
+}
+
+var slugRe = regexp.MustCompile(`[^a-z0-9]+`)
+
+// slugify converts a string to a URL-friendly slug.
+func slugify(s string) string {
+	s = strings.ToLower(s)
+	s = slugRe.ReplaceAllString(s, "-")
+	s = strings.Trim(s, "-")
+
+	// Truncate to 60 chars at a hyphen boundary if possible.
+	if len(s) > 60 {
+		s = s[:60]
+		if idx := strings.LastIndex(s, "-"); idx > 0 {
+			s = s[:idx]
+		}
+	}
+
+	if s == "" {
+		return "link"
+	}
+	return s
+}
+
+// escapeYAML wraps a string in double quotes if it contains special YAML characters.
+func escapeYAML(s string) string {
+	if strings.ContainsAny(s, `:"#[]{}`) ||
+		(len(s) > 0 && (s[0] == ' ' || s[0] == '\t' || s[len(s)-1] == ' ' || s[len(s)-1] == '\t')) {
+		escaped := strings.ReplaceAll(s, `"`, `\"`)
+		return `"` + escaped + `"`
+	}
+	return s
 }
 
 // atomicWrite writes content to a file atomically via temp + rename.

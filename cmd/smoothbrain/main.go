@@ -20,6 +20,7 @@ import (
 	"github.com/boozedog/smoothbrain/internal/plugin/obsidian"
 	"github.com/boozedog/smoothbrain/internal/plugin/tailscale"
 	"github.com/boozedog/smoothbrain/internal/plugin/td"
+	"github.com/boozedog/smoothbrain/internal/plugin/twitter"
 	"github.com/boozedog/smoothbrain/internal/plugin/uptimekuma"
 	"github.com/boozedog/smoothbrain/internal/plugin/webmd"
 	"github.com/boozedog/smoothbrain/internal/plugin/xai"
@@ -77,6 +78,7 @@ func main() {
 	registry.Register(xai.New(log))
 	registry.Register(mattermost.New(log))
 	registry.Register(webmd.New(log))
+	registry.Register(twitter.New(log))
 	registry.Register(claudecode.New(log))
 	registry.Register(obsidian.New(log))
 	registry.Register(tailscale.New(log))
@@ -93,6 +95,7 @@ func main() {
 			cmdsBySource[r.Source] = append(cmdsBySource[r.Source], plugin.CommandInfo{
 				Name:        r.Event,
 				Description: r.Description,
+				Hidden:      strings.HasPrefix(r.Event, "autolink"),
 			})
 		}
 	}
@@ -131,7 +134,9 @@ func main() {
 	srv := core.NewServer(db, log, hub, registry, cfg.Routes, logBuf)
 	registry.RegisterWebhooks(srv)
 
-	handler := srv.Handler()
+	// Auth middleware is only applied to the tsnet (Tailscale) listener.
+	// The local HTTP listener runs without auth for convenience.
+	tsHandler := srv.Handler()
 	if cfg.Auth.RPID != "" {
 		a, err := auth.New(cfg.Auth, db.DB(), log)
 		if err != nil {
@@ -139,8 +144,8 @@ func main() {
 			os.Exit(1)
 		}
 		a.RegisterRoutes(srv.Mux())
-		handler = a.Middleware(srv.Handler())
-		log.Info("auth enabled", "rp_id", cfg.Auth.RPID)
+		tsHandler = a.Middleware(srv.Handler())
+		log.Info("auth enabled (tailscale only)", "rp_id", cfg.Auth.RPID)
 		a.StartCleanup(ctx)
 	}
 
@@ -165,7 +170,7 @@ func main() {
 		go func() {
 			log.Info("tsnet service listening", "service", cfg.Tailscale.ServiceName, "hostname", cfg.Tailscale.Hostname)
 			//nolint:gosec // tsnet listener is internal; timeouts are set on the main HTTP server
-			if err := http.Serve(ln, handler); err != nil {
+			if err := http.Serve(ln, tsHandler); err != nil {
 				log.Error("tsnet serve error", "error", err)
 			}
 		}()
@@ -182,7 +187,7 @@ func main() {
 
 	httpServer := &http.Server{
 		Addr:              cfg.HTTP.Address,
-		Handler:           handler,
+		Handler:           srv.Handler(),
 		ReadHeaderTimeout: 10 * time.Second,
 		ReadTimeout:       30 * time.Second,
 		WriteTimeout:      60 * time.Second,

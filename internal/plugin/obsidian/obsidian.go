@@ -101,6 +101,8 @@ func (p *Plugin) Transform(ctx context.Context, event plugin.Event, action strin
 		return p.writeLink(ctx, event, params)
 	case "write_log":
 		return p.writeLog(ctx, event, params)
+	case "save_link":
+		return p.saveLink(ctx, event, params)
 	default:
 		return event, fmt.Errorf("obsidian: unknown action %q", action)
 	}

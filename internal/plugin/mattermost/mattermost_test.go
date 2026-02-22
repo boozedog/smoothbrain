@@ -518,3 +518,138 @@ func TestInit_ConfigParsing(t *testing.T) {
 		t.Error("Listen = false, want true")
 	}
 }
+
+// --- URL auto-detection tests ---
+
+func TestHandleWSMessage_URLAutoDetect(t *testing.T) {
+	p, bus := newTestWSPlugin(t, acceptAllHandler)
+
+	data := makeWSPostedMessage("user456", "D", "check out https://example.com/article")
+	p.handleWSMessage(data)
+
+	if bus.len() != 1 {
+		t.Fatalf("expected 1 event, got %d", bus.len())
+	}
+	ev := bus.get(0)
+	if ev.Type != "autolink" {
+		t.Errorf("Type = %q, want %q", ev.Type, "autolink")
+	}
+	if ev.Source != "mattermost" {
+		t.Errorf("Source = %q, want %q", ev.Source, "mattermost")
+	}
+	u, _ := ev.Payload["url"].(string)
+	if u != "https://example.com/article" {
+		t.Errorf("url = %q, want %q", u, "https://example.com/article")
+	}
+}
+
+func TestHandleWSMessage_TweetURLAutoDetect(t *testing.T) {
+	p, bus := newTestWSPlugin(t, acceptAllHandler)
+
+	data := makeWSPostedMessage("user456", "D", "look at https://x.com/user/status/123456789")
+	p.handleWSMessage(data)
+
+	if bus.len() != 1 {
+		t.Fatalf("expected 1 event, got %d", bus.len())
+	}
+	ev := bus.get(0)
+	if ev.Type != "autolink-tweet" {
+		t.Errorf("Type = %q, want %q", ev.Type, "autolink-tweet")
+	}
+	tweetID, _ := ev.Payload["tweet_id"].(string)
+	if tweetID != "123456789" {
+		t.Errorf("tweet_id = %q, want %q", tweetID, "123456789")
+	}
+}
+
+func TestHandleWSMessage_MultipleURLs(t *testing.T) {
+	p, bus := newTestWSPlugin(t, acceptAllHandler)
+
+	data := makeWSPostedMessage("user456", "D", "https://a.com and https://b.com")
+	p.handleWSMessage(data)
+
+	if bus.len() != 2 {
+		t.Fatalf("expected 2 events, got %d", bus.len())
+	}
+	if bus.get(0).Type != "autolink" {
+		t.Errorf("event[0].Type = %q, want %q", bus.get(0).Type, "autolink")
+	}
+	if bus.get(1).Type != "autolink" {
+		t.Errorf("event[1].Type = %q, want %q", bus.get(1).Type, "autolink")
+	}
+}
+
+func TestHandleWSMessage_MixedURLsAndTweets(t *testing.T) {
+	p, bus := newTestWSPlugin(t, acceptAllHandler)
+
+	data := makeWSPostedMessage("user456", "D", "https://example.com https://x.com/u/status/999")
+	p.handleWSMessage(data)
+
+	if bus.len() != 2 {
+		t.Fatalf("expected 2 events, got %d", bus.len())
+	}
+
+	ev0 := bus.get(0)
+	ev1 := bus.get(1)
+	if ev0.Type != "autolink" {
+		t.Errorf("event[0].Type = %q, want %q", ev0.Type, "autolink")
+	}
+	if ev1.Type != "autolink-tweet" {
+		t.Errorf("event[1].Type = %q, want %q", ev1.Type, "autolink-tweet")
+	}
+}
+
+func TestBuildHelpText_HidesHiddenCommands(t *testing.T) {
+	p := New(discardLogger())
+	p.commands = []plugin.CommandInfo{
+		{Name: "ask", Description: "Ask a question"},
+		{Name: "autolink", Description: "Auto-detected link", Hidden: true},
+	}
+	got := p.buildHelpText()
+	if !strings.Contains(got, "ask") {
+		t.Errorf("help text missing 'ask': %q", got)
+	}
+	if strings.Contains(got, "autolink") {
+		t.Errorf("help text should not contain hidden 'autolink': %q", got)
+	}
+}
+
+func TestHandleWSMessage_KnownCommandStillWorks(t *testing.T) {
+	p, bus := newTestWSPlugin(t, acceptAllHandler)
+
+	data := makeWSPostedMessage("user456", "D", "ask how are you")
+	p.handleWSMessage(data)
+
+	if bus.len() != 1 {
+		t.Fatalf("expected 1 event, got %d", bus.len())
+	}
+	ev := bus.get(0)
+	if ev.Type != "ask" {
+		t.Errorf("Type = %q, want %q", ev.Type, "ask")
+	}
+	msg, _ := ev.Payload["message"].(string)
+	if msg != "how are you" {
+		t.Errorf("message = %q, want %q", msg, "how are you")
+	}
+}
+
+func TestHandleWSMessage_URLInKnownCommand(t *testing.T) {
+	p, bus := newTestWSPlugin(t, acceptAllHandler)
+	// "md" is added as known command for this test.
+	p.commands = append(p.commands, plugin.CommandInfo{Name: "md", Description: "Fetch markdown"})
+
+	data := makeWSPostedMessage("user456", "D", "md https://example.com")
+	p.handleWSMessage(data)
+
+	if bus.len() != 1 {
+		t.Fatalf("expected 1 event, got %d", bus.len())
+	}
+	ev := bus.get(0)
+	if ev.Type != "md" {
+		t.Errorf("Type = %q, want %q — known commands should take priority over URL detection", ev.Type, "md")
+	}
+	msg, _ := ev.Payload["message"].(string)
+	if msg != "https://example.com" {
+		t.Errorf("message = %q, want %q", msg, "https://example.com")
+	}
+}
